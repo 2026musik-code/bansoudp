@@ -38,10 +38,6 @@ cp requirements.txt $TARGET_DIR/
 cp -r templates $TARGET_DIR/
 cp -r static $TARGET_DIR/
 
-# Fix permissions
-chown -R www-data:www-data $TARGET_DIR
-chmod -R 755 $TARGET_DIR
-
 cd $TARGET_DIR
 
 # Setup Python Venv
@@ -53,6 +49,14 @@ fi
 
 source venv/bin/activate
 pip install -r requirements.txt
+
+# Initialize Database
+echo "Initializing Database..."
+python3 -c "from app import init_db; init_db()"
+
+# Fix permissions (Must be done after DB init to ensure www-data owns the db file)
+chown -R www-data:www-data $TARGET_DIR
+chmod -R 755 $TARGET_DIR
 
 # Create Systemd Service
 echo "Creating Systemd Service..."
