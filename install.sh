@@ -57,10 +57,14 @@ pip install -r requirements.txt
 
 # Initialize Database
 echo "Initializing Database..."
+# Create instance folder explicitly if it doesn't exist
+mkdir -p instance
 python3 -c "from app import init_db; init_db()"
 
-# Fix permissions (Must be done after DB init to ensure www-data owns the db file)
+# Fix permissions (CRITICAL: Must be done after DB init to ensure www-data owns the db file)
+echo "Fixing Permissions..."
 chown -R www-data:www-data $TARGET_DIR
+chown -R www-data:www-data $TARGET_DIR/instance
 chmod -R 755 $TARGET_DIR
 
 # Create Systemd Service
