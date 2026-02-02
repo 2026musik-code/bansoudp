@@ -30,8 +30,12 @@ class Admin(db.Model):
 
 class Settings(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    qr_api_key = db.Column(db.String(255), nullable=True) # Or generic config for payment
+    qr_api_key = db.Column(db.String(255), nullable=True) # Used for Manual/QR
     price_per_month = db.Column(db.Integer, default=10000)
+    # Generic Payment Gateway Config
+    payment_gateway_url = db.Column(db.String(255), nullable=True)
+    merchant_id = db.Column(db.String(100), nullable=True)
+    server_key = db.Column(db.String(100), nullable=True)
 
 class Account(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -136,7 +140,34 @@ def buy():
     db.session.add(new_account)
     db.session.commit()
 
+    # Check for Payment Gateway redirection
+    settings = Settings.query.first()
+    if settings and settings.payment_gateway_url and settings.merchant_id:
+        # Generic Redirection Logic
+        # Append params like ?amount=xxx&order_id=xxx
+        payment_url = f"{settings.payment_gateway_url}?merchant_id={settings.merchant_id}&order_id={new_account.id}&amount={settings.price_per_month}&email=user@local.com"
+        return redirect(payment_url)
+
     return redirect(url_for('payment', account_id=new_account.id))
+
+@app.route('/callback', methods=['POST'])
+def payment_callback():
+    # Generic Handler stub
+    # In a real scenario, we would verify the signature using settings.server_key
+    data = request.json or request.form
+
+    # Assumption: Gateway sends 'order_id' and 'status'
+    order_id = data.get('order_id')
+    status = data.get('status') # e.g., 'PAID', 'SUCCESS'
+
+    if order_id and status in ['PAID', 'SUCCESS', 'paid', 'success']:
+        account = Account.query.get(order_id)
+        if account:
+            account.status = 'active'
+            db.session.commit()
+            return jsonify({'status': 'ok'})
+
+    return jsonify({'status': 'failed'}), 400
 
 @app.route('/payment/<int:account_id>')
 def payment(account_id):
@@ -262,6 +293,10 @@ def update_settings():
 
     settings = Settings.query.first()
     settings.qr_api_key = request.form.get('qr_api_key')
+    settings.payment_gateway_url = request.form.get('payment_gateway_url')
+    settings.merchant_id = request.form.get('merchant_id')
+    settings.server_key = request.form.get('server_key')
+
     try:
         settings.price_per_month = int(request.form.get('price'))
     except:
