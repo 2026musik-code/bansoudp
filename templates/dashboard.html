@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row mb-5">
+    <!-- Server Stats -->
+    <div class="col-md-4 mb-3">
+        <div class="glass-card text-center">
+            <div class="stat-label">Domain</div>
+            <div class="stat-value" style="font-size: 1.2rem;">{{ stats.domain }}</div>
+        </div>
+    </div>
+    <div class="col-md-4 mb-3">
+        <div class="glass-card text-center">
+            <div class="stat-label">IP Address</div>
+            <div class="stat-value" style="font-size: 1.2rem;">{{ stats.ip }}</div>
+        </div>
+    </div>
+    <div class="col-md-4 mb-3">
+         <div class="glass-card text-center">
+            <div class="stat-label">Network Traffic</div>
+            <div class="stat-value" style="font-size: 1rem;">
+                <i class="fas fa-arrow-up text-success"></i> {{ stats.traffic_sent }} MB<br>
+                <i class="fas fa-arrow-down text-primary"></i> {{ stats.traffic_recv }} MB
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 mb-3">
+        <div class="glass-card text-center">
+            <div class="stat-label">CPU Load</div>
+            <div class="stat-value">{{ stats.cpu }}%</div>
+        </div>
+    </div>
+    <div class="col-md-6 mb-3">
+        <div class="glass-card text-center">
+            <div class="stat-label">RAM Usage</div>
+            <div class="stat-value">{{ stats.ram }}%</div>
+        </div>
+    </div>
+</div>
+
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="glass-card">
+            <h3 class="text-center mb-4"><i class="fas fa-shopping-cart"></i> Beli Akun ZIVPN UDP</h3>
+            <p class="text-center text-muted">Nikmati koneksi stabil dan cepat dengan server premium kami.</p>
+
+            <form action="{{ url_for('buy') }}" method="POST">
+                <div class="mb-3">
+                    <label class="form-label">Username</label>
+                    <input type="text" name="username" class="form-control" placeholder="Masukkan username baru" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Password</label>
+                    <input type="text" name="password" class="form-control" placeholder="Masukkan password baru" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Server IP</label>
+                    <input type="text" class="form-control" value="{{ stats.ip }}" disabled>
+                    <small class="text-muted">Akun akan dibuat di server ini.</small>
+                </div>
+
+                <div class="d-grid gap-2">
+                    <button type="submit" class="btn btn-custom btn-lg">
+                        <i class="fas fa-bolt"></i> Beli Sekarang (QRIS)
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- How it works -->
+<div class="row mt-5">
+    <div class="col-12">
+        <div class="glass-card">
+            <h4><i class="fas fa-info-circle"></i> Cara Kerja</h4>
+            <ol class="text-muted">
+                <li>Isi Username dan Password yang diinginkan.</li>
+                <li>Klik tombol Beli.</li>
+                <li>Scan QR Code yang muncul untuk pembayaran.</li>
+                <li>Setelah pembayaran berhasil, Anda akan menerima <strong>PIN</strong>.</li>
+                <li>Gunakan PIN tersebut untuk melihat detail akun Anda di menu "List Akun".</li>
+            </ol>
+        </div>
+    </div>
+</div>
+{% endblock %}

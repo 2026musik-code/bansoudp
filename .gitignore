@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+*.db
+instance/
+.DS_Store
+verification_dashboard.png
+verify_dashboard.py
+server.log

@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="glass-card">
+            <h3 class="mb-4">Edit Akun</h3>
+            <form action="{{ url_for('edit_account', id=account.id) }}" method="POST">
+                <div class="mb-3">
+                    <label class="form-label">Username (Read Only)</label>
+                    <input type="text" class="form-control" value="{{ account.username }}" disabled>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Password</label>
+                    <input type="text" name="password" class="form-control" value="{{ account.password }}" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Status</label>
+                    <select name="status" class="form-select bg-dark text-white">
+                        <option value="active" {% if account.status == 'active' %}selected{% endif %}>Active</option>
+                        <option value="pending" {% if account.status == 'pending' %}selected{% endif %}>Pending</option>
+                        <option value="expired" {% if account.status == 'expired' %}selected{% endif %}>Expired</option>
+                        <option value="suspended" {% if account.status == 'suspended' %}selected{% endif %}>Suspended</option>
+                    </select>
+                </div>
+
+                <div class="d-grid gap-2">
+                    <button type="submit" class="btn btn-custom">Simpan Perubahan</button>
+                    <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline-light">Batal</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6 text-center">
+        <div class="glass-card">
+            <h3 class="mb-4">Pembayaran</h3>
+            <p>Silakan scan QR Code di bawah ini untuk menyelesaikan pembayaran.</p>
+
+            <div class="bg-white p-3 d-inline-block rounded mb-4">
+                <!-- Placeholder for QR Code. In real app, this src would be dynamic -->
+                <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data={{ payment_data }}" alt="QR Code" class="img-fluid">
+            </div>
+
+            <div class="alert alert-warning text-start">
+                <strong>Penting:</strong>
+                <ul class="mb-0">
+                    <li>Total: <strong>Rp {{ price }}</strong></li>
+                    <li>Jangan tutup halaman ini sampai pembayaran berhasil.</li>
+                </ul>
+            </div>
+
+            <form action="{{ url_for('check_payment', account_id=account_id) }}" method="POST">
+                <button type="submit" class="btn btn-success btn-lg w-100">
+                    <i class="fas fa-check"></i> Saya Sudah Bayar
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
