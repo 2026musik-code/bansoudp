@@ -26,19 +26,24 @@ apt install -y python3-pip python3-venv nginx git
 
 # Setup Project Directory
 TARGET_DIR="/var/www/bansos-zivpn"
+REPO_URL="https://github.com/2026musik-code/bansoudp.git"
 
 echo "Setting up Directory at $TARGET_DIR..."
-# Create directory if not exists
-mkdir -p $TARGET_DIR
 
-# Copy application files
-# We assume the script is run from the source directory
-cp app.py $TARGET_DIR/
-cp requirements.txt $TARGET_DIR/
-cp -r templates $TARGET_DIR/
-cp -r static $TARGET_DIR/
-
-cd $TARGET_DIR
+# Check if directory exists and is a git repo
+if [ -d "$TARGET_DIR/.git" ]; then
+    echo "Updating existing repository..."
+    cd $TARGET_DIR
+    git pull origin main
+else
+    echo "Cloning repository..."
+    # Remove directory if it exists but is not a git repo to avoid conflicts
+    if [ -d "$TARGET_DIR" ]; then
+        rm -rf $TARGET_DIR
+    fi
+    git clone $REPO_URL $TARGET_DIR
+    cd $TARGET_DIR
+fi
 
 # Setup Python Venv
 echo "Setting up Python Environment..."
