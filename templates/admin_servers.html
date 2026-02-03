@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="glass-card mb-4">
+    <div class="d-flex justify-content-between align-items-center">
+        <h2><i class="fas fa-server"></i> Kelola Server</h2>
+        <div>
+            <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary btn-sm me-2"><i class="fas fa-arrow-left"></i> Kembali</a>
+            <a href="{{ url_for('logout') }}" class="btn btn-danger btn-sm">Logout</a>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Add Server Form -->
+    <div class="col-md-4 mb-4">
+        <div class="glass-card">
+            <h4>Tambah Server Baru</h4>
+            <form action="{{ url_for('add_server') }}" method="POST">
+                <div class="mb-3">
+                    <label class="form-label">Nama Server</label>
+                    <input type="text" name="name" class="form-control" placeholder="Ex: SG-1 Premium" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">IP Address / Domain</label>
+                    <input type="text" name="ip" class="form-control" placeholder="Ex: 10.10.10.10" required>
+                </div>
+                <button type="submit" class="btn btn-success w-100"><i class="fas fa-plus"></i> Buat Token Install</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Server List -->
+    <div class="col-md-8">
+        <div class="glass-card">
+            <h4>Daftar Server Node</h4>
+            <div class="table-responsive">
+                <table class="table table-hover table-dark table-borderless mt-3">
+                    <thead>
+                        <tr>
+                            <th>Nama</th>
+                            <th>IP</th>
+                            <th>Status</th>
+                            <th>Load (CPU/RAM)</th>
+                            <th>Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for server in servers %}
+                        <tr>
+                            <td>{{ server.name }}</td>
+                            <td>{{ server.ip_address }}</td>
+                            <td>
+                                {% if server.status == 'online' %}
+                                    <span class="badge bg-success">Online</span>
+                                {% else %}
+                                    <span class="badge bg-danger">Offline</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if server.stats %}
+                                    {% set stats = server.stats | from_json %}
+                                    <small>C: {{ stats.cpu }}% | R: {{ stats.ram }}%</small>
+                                {% else %}
+                                    <small>-</small>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <button class="btn btn-info btn-sm" data-bs-toggle="modal" data-bs-target="#installModal{{ server.id }}">
+                                    <i class="fas fa-code"></i> Install
+                                </button>
+                                <form action="{{ url_for('delete_server', id=server.id) }}" method="POST" style="display:inline;" onsubmit="return confirm('Hapus server ini?');">
+                                    <button type="submit" class="btn btn-danger btn-sm"><i class="fas fa-trash"></i></button>
+                                </form>
+                            </td>
+                        </tr>
+
+                        <!-- Modal for Install Command -->
+                        <div class="modal fade" id="installModal{{ server.id }}" tabindex="-1" aria-hidden="true">
+                            <div class="modal-dialog">
+                                <div class="modal-content bg-dark text-white glass-card">
+                                    <div class="modal-header border-secondary">
+                                        <h5 class="modal-title">Install Node: {{ server.name }}</h5>
+                                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                                    </div>
+                                    <div class="modal-body">
+                                        <p>Jalankan perintah ini di VPS <strong>{{ server.ip_address }}</strong>:</p>
+                                        <div class="bg-black p-3 rounded position-relative">
+                                            <code id="cmd{{ server.id }}" style="word-break: break-all;">curl -s {{ request.host_url }}api/setup/install.sh | bash -s -- {{ server.token }}</code>
+                                            <button class="btn btn-sm btn-light position-absolute top-0 end-0 m-2" onclick="copyToClipboard('cmd{{ server.id }}')">Copy</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function copyToClipboard(elementId) {
+    var copyText = document.getElementById(elementId).innerText;
+    navigator.clipboard.writeText(copyText).then(function() {
+        alert("Command copied to clipboard!");
+    });
+}
+</script>
+{% endblock %}

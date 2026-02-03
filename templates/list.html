@@ -25,16 +25,27 @@
                         <table class="table table-dark table-borderless">
                             <tbody>
                                 <tr>
+                                    <th scope="row">Protocol</th>
+                                    <td><span class="badge bg-warning">{{ account.protocol }}</span></td>
+                                </tr>
+                                <tr>
                                     <th scope="row">Username</th>
                                     <td><span class="badge bg-primary">{{ account.username }}</span></td>
                                 </tr>
+                                {% if account.protocol == 'udp' %}
                                 <tr>
                                     <th scope="row">Password</th>
                                     <td><code>{{ account.password }}</code></td>
                                 </tr>
+                                {% else %}
                                 <tr>
-                                    <th scope="row">IP Server</th>
-                                    <td>{{ account.ip_address }}</td>
+                                    <th scope="row">UUID</th>
+                                    <td><code>{{ account.uuid }}</code></td>
+                                </tr>
+                                {% endif %}
+                                <tr>
+                                    <th scope="row">Server</th>
+                                    <td>{{ account.server.name }} ({{ account.server.ip_address }})</td>
                                 </tr>
                                 <tr>
                                     <th scope="row">Expired</th>

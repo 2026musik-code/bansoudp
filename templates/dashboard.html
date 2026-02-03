@@ -51,7 +51,27 @@
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Password</label>
-                    <input type="text" name="password" class="form-control" placeholder="Masukkan password baru" required>
+                    <input type="text" name="password" class="form-control" placeholder="Masukkan password (wajib untuk UDP)" >
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Pilih Protokol</label>
+                        <select name="protocol" class="form-select" id="protocolSelect">
+                            <option value="udp">ZIVPN UDP</option>
+                            <option value="vmess">Vmess WS</option>
+                            <option value="vless">Vless WS</option>
+                            <option value="trojan">Trojan WS</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Pilih Server</label>
+                        <select name="server_id" class="form-select">
+                            {% for server in servers %}
+                                <option value="{{ server.id }}">{{ server.name }} ({{ server.ip_address }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
                 </div>
 
                 <div class="mb-3">
@@ -61,12 +81,6 @@
                             <option value="{{ channel.code }}">{{ channel.name }}</option>
                         {% endfor %}
                     </select>
-                </div>
-
-                <div class="mb-3">
-                    <label class="form-label">Server IP</label>
-                    <input type="text" class="form-control" value="{{ stats.ip }}" disabled>
-                    <small class="text-muted">Akun akan dibuat di server ini.</small>
                 </div>
 
                 <div class="d-grid gap-2">

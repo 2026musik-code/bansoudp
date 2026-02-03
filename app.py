@@ -10,6 +10,7 @@ import socket
 import subprocess
 import requests
 import json
+import uuid
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 app = Flask(__name__)
@@ -19,6 +20,15 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
+
+@app.template_filter('from_json')
+def from_json(value):
+    if not value:
+        return None
+    try:
+        return json.loads(value)
+    except:
+        return None
 
 # --- Models ---
 class Admin(db.Model):
@@ -37,15 +47,31 @@ class Settings(db.Model):
     paymenku_api_key = db.Column(db.String(255), nullable=True)
     price_per_month = db.Column(db.Integer, default=10000)
 
+class Server(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(80), nullable=False)
+    ip_address = db.Column(db.String(50), nullable=False)
+    token = db.Column(db.String(100), unique=True, nullable=False)
+    last_heartbeat = db.Column(db.DateTime, nullable=True)
+    status = db.Column(db.String(20), default='offline') # online, offline
+    stats = db.Column(db.Text, nullable=True) # JSON string: {cpu: 10, ram: 20}
+
 class Account(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     password = db.Column(db.String(80), nullable=False) # Storing plain for user display
-    ip_address = db.Column(db.String(50), nullable=False)
-    pin = db.Column(db.String(10), unique=True, nullable=False) # The PIN needed to access
+
+    # New Fields for Multi-Server & Protocols
+    protocol = db.Column(db.String(20), default='udp') # udp, vmess, vless, trojan
+    uuid = db.Column(db.String(36), nullable=True) # For Xray
+    server_id = db.Column(db.Integer, db.ForeignKey('server.id'), nullable=True)
+    server = db.relationship('Server', backref=db.backref('accounts', lazy=True))
+
+    ip_address = db.Column(db.String(50), nullable=True) # Valid for UDP, or redundant if using Server relation
+    pin = db.Column(db.String(10), unique=True, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
     expiry_date = db.Column(db.DateTime, nullable=False)
-    status = db.Column(db.String(20), default='pending') # pending, active, expired
+    status = db.Column(db.String(20), default='pending')
 
     # Paymenku specific
     reference_id = db.Column(db.String(100), unique=True, nullable=True)
@@ -53,14 +79,10 @@ class Account(db.Model):
 
 # --- Helper Functions ---
 def get_system_stats():
+    # Stats for the MASTER server (Panel)
     cpu_percent = psutil.cpu_percent(interval=1)
     ram = psutil.virtual_memory()
     ram_percent = ram.percent
-
-    # Network Stats
-    net = psutil.net_io_counters()
-    traffic_sent = round(net.bytes_sent / (1024 * 1024), 2) # MB
-    traffic_recv = round(net.bytes_recv / (1024 * 1024), 2) # MB
 
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -74,14 +96,32 @@ def get_system_stats():
         'cpu': cpu_percent,
         'ram': ram_percent,
         'ip': local_ip,
-        'domain': request.host if request else 'localhost',
-        'traffic_sent': traffic_sent,
-        'traffic_recv': traffic_recv
+        'domain': request.host if request else 'localhost'
     }
 
 def init_db():
     with app.app_context():
+        # Check if we need to migrate (simple hack: check if Server table exists)
+        try:
+            Server.query.first()
+        except:
+            # If error, tables might be missing or old schema.
+            # In dev, we can try to create.
+            # If it fails due to mismatch, we might need to recreate DB file manually or catch operational error.
+            pass
+
         db.create_all()
+
+        # Create Default Localhost Server if none exists
+        if not Server.query.first():
+            local_server = Server(name="Localhost", ip_address="127.0.0.1", token=str(uuid.uuid4()), status="online")
+            # Fake stats for localhost
+            local_server.stats = json.dumps({'cpu': 0, 'ram': 0})
+            db.session.add(local_server)
+
+        # Create Localhost Server (The Panel itself acts as a server too if needed, or just default)
+        # But per plan, we treat this as Master. Users might want to install VPN on Master too.
+        # Let's check if Admin exists
         if not Admin.query.filter_by(username='admin').first():
             admin = Admin(username='admin')
             admin.set_password('admin123')
@@ -101,11 +141,6 @@ def get_paymenku_channels(api_key):
         response = requests.get('https://paymenku.com/api/v1/payment-channels', headers=headers, timeout=5)
         if response.status_code == 200:
             data = response.json()
-            # Assuming the response is a list of channels or wrapped in data
-            # Based on image 2, it looks like a list or table.
-            # Usually APIs return { success: true, data: [...] } or just [...]
-            # We'll assume direct list or data key.
-            # If parsing fails, return defaults.
             return data if isinstance(data, list) else data.get('data', [])
     except:
         pass
@@ -120,11 +155,16 @@ def index():
 def dashboard():
     stats = get_system_stats()
     settings = Settings.query.first()
+
+    # Get active servers
+    servers = Server.query.filter_by(status='online').all()
+    # Or just all servers for now so user can see them even if offline (maybe disabled)
+    all_servers = Server.query.all()
+
     channels = []
     if settings and settings.paymenku_api_key:
         channels = get_paymenku_channels(settings.paymenku_api_key)
 
-    # Fallback if API fails or no key, just so UI shows something
     if not channels:
         channels = [
             {'code': 'qris', 'name': 'QRIS', 'type': 'qris'},
@@ -132,16 +172,18 @@ def dashboard():
             {'code': 'dana', 'name': 'DANA', 'type': 'ewallet'}
         ]
 
-    return render_template('dashboard.html', stats=stats, settings=settings, channels=channels)
+    return render_template('dashboard.html', stats=stats, settings=settings, channels=channels, servers=all_servers)
 
 @app.route('/buy', methods=['POST'])
 def buy():
     username = request.form.get('username')
     password = request.form.get('password')
     channel_code = request.form.get('channel_code')
+    protocol = request.form.get('protocol', 'udp')
+    server_id = request.form.get('server_id')
 
-    if not username or not password:
-        flash('Username dan Password wajib diisi!', 'danger')
+    if not username: # Password might be auto-generated for uuid protocols, but let's stick to form
+        flash('Username wajib diisi!', 'danger')
         return redirect(url_for('dashboard'))
 
     if Account.query.filter_by(username=username).first():
@@ -153,40 +195,57 @@ def buy():
         flash('Sistem pembayaran belum dikonfigurasi admin.', 'danger')
         return redirect(url_for('dashboard'))
 
-    stats = get_system_stats()
-    server_ip = stats['ip']
+    if not server_id:
+        flash('Silakan pilih server.', 'warning')
+        return redirect(url_for('dashboard'))
 
-    # Generate PIN
+    server = Server.query.get(server_id)
+    if not server:
+        flash('Server tidak ditemukan.', 'danger')
+        return redirect(url_for('dashboard'))
+
+    # Prepare Account Data
     pin = str(random.randint(100000, 999999))
     while Account.query.filter_by(pin=pin).first():
         pin = str(random.randint(100000, 999999))
 
-    # Reference ID for Paymenku
     reference_id = f"INV-{int(datetime.datetime.utcnow().timestamp())}-{random.randint(100,999)}"
-
-    # Create Pending Account
     expiry = datetime.datetime.utcnow() + datetime.timedelta(days=30)
+
+    new_uuid = None
+    if protocol in ['vmess', 'vless', 'trojan']:
+        new_uuid = str(uuid.uuid4())
+        # For these protocols, password might be less relevant for auth but used for user access
+        if not password:
+            password = "generated-uuid"
+    else:
+        # UDP requires password
+        if not password:
+             flash('Password wajib diisi untuk UDP.', 'danger')
+             return redirect(url_for('dashboard'))
 
     new_account = Account(
         username=username,
         password=password,
-        ip_address=server_ip,
         pin=pin,
         expiry_date=expiry,
         status='pending',
-        reference_id=reference_id
+        reference_id=reference_id,
+        protocol=protocol,
+        server_id=server.id,
+        uuid=new_uuid
     )
 
     db.session.add(new_account)
     db.session.commit()
 
-    # Call Paymenku API
+    # Call Paymenku API (Same as before)
     payload = {
         "reference_id": reference_id,
         "amount": settings.price_per_month,
         "customer_name": username,
-        "customer_email": "user@zivpn.local", # Placeholder as we don't ask email
-        "customer_phone": "08123456789", # Placeholder
+        "customer_email": "user@zivpn.local",
+        "customer_phone": "08123456789",
         "channel_code": channel_code if channel_code else "qris",
         "return_url": url_for('success', account_id=new_account.id, _external=True)
     }
@@ -200,28 +259,19 @@ def buy():
         r = requests.post("https://paymenku.com/api/v1/transaction/create", json=payload, headers=headers, timeout=10)
         resp_data = r.json()
 
-        # We expect a success response with a payment URL or QR string
-        # Typically: { success: true, data: { payment_url: "...", ... } }
-        # Or direct fields. Based on typical structure.
-
-        # Check success status (handles 'success': true or 'status': 'success')
         is_success = (r.status_code == 200) and (
             resp_data.get('success') is True or
             resp_data.get('status') == 'success'
         )
 
         if is_success:
-            # Look for payment_url or similar
             data = resp_data.get('data', resp_data)
-
-            # Try multiple known keys
             payment_url = (
                 data.get('pay_url') or
                 data.get('payment_url') or
                 data.get('redirect_url')
             )
 
-            # Also check nested payment_info for qr_url or payment_page
             if not payment_url and 'payment_info' in data:
                 info = data['payment_info']
                 payment_url = info.get('payment_page') or info.get('qr_url')
@@ -229,8 +279,6 @@ def buy():
             if payment_url:
                 return redirect(payment_url)
             else:
-                # If no URL, maybe it returns raw QR?
-                # For now assume redirect.
                 flash(f"Error getting payment URL: {resp_data}", 'danger')
         else:
             flash(f"Payment Gateway Error: {resp_data.get('message', r.text)}", 'danger')
@@ -238,16 +286,13 @@ def buy():
     except Exception as e:
         flash(f"Connection Error: {str(e)}", 'danger')
 
-    # If failed, delete the pending account so they can try again with same username
     db.session.delete(new_account)
     db.session.commit()
     return redirect(url_for('dashboard'))
 
 @app.route('/callback', methods=['POST'])
 def payment_callback():
-    # Payload: { "event": "payment.status_updated", "trx_id": "...", "reference_id": "...", "status": "paid", ... }
     data = request.json
-
     if not data:
         return jsonify({'status': 'no data'}), 400
 
@@ -268,11 +313,8 @@ def payment_callback():
 @app.route('/success/<int:account_id>')
 def success(account_id):
     account = Account.query.get_or_404(account_id)
-    # If users hit return_url but callback hasn't fired yet, we might want to check status manually
     if account.status != 'active':
-        # Optional: Call check-status API here if strictly needed
         flash('Pembayaran sedang diproses. Tunggu sebentar atau refresh.', 'info')
-
     return render_template('success.html', pin=account.pin, account=account)
 
 @app.route('/list', methods=['GET', 'POST'])
@@ -318,7 +360,8 @@ def admin_dashboard():
 
     accounts = Account.query.order_by(Account.created_at.desc()).all()
     settings = Settings.query.first()
-    return render_template('admin_dashboard.html', accounts=accounts, settings=settings)
+    servers = Server.query.all()
+    return render_template('admin_dashboard.html', accounts=accounts, settings=settings, servers=servers)
 
 @app.route('/admin/action/<action>/<int:id>', methods=['POST'])
 def admin_action(action, id):
@@ -389,7 +432,6 @@ def change_password():
 def system_update():
     if not session.get('admin_logged_in'):
         return redirect(url_for('admin_login'))
-
     try:
         if os.path.exists('.git'):
             subprocess.run(['git', 'pull'], check=True)
@@ -398,10 +440,288 @@ def system_update():
              flash('Git repository not found. Cannot update.', 'warning')
     except Exception as e:
         flash(f'Update failed: {str(e)}', 'danger')
-
     return redirect(url_for('admin_dashboard'))
+
+# --- Server Management Routes ---
+@app.route('/admin/servers')
+def admin_servers():
+    if not session.get('admin_logged_in'):
+        return redirect(url_for('admin_login'))
+    servers = Server.query.all()
+    return render_template('admin_servers.html', servers=servers)
+
+@app.route('/admin/server/add', methods=['POST'])
+def add_server():
+    if not session.get('admin_logged_in'):
+        return redirect(url_for('admin_login'))
+
+    name = request.form.get('name')
+    ip = request.form.get('ip')
+
+    if name and ip:
+        token = str(uuid.uuid4())
+        new_server = Server(name=name, ip_address=ip, token=token)
+        db.session.add(new_server)
+        db.session.commit()
+        flash(f'Server {name} added. Token: {token}', 'success')
+
+    return redirect(url_for('admin_servers'))
+
+@app.route('/admin/server/delete/<int:id>', methods=['POST'])
+def delete_server(id):
+    if not session.get('admin_logged_in'):
+        return redirect(url_for('admin_login'))
+    server = Server.query.get_or_404(id)
+    db.session.delete(server)
+    db.session.commit()
+    flash('Server deleted.', 'success')
+    return redirect(url_for('admin_servers'))
+
+# --- API for Nodes ---
+@app.route('/api/node/heartbeat', methods=['POST'])
+def node_heartbeat():
+    token = request.headers.get('X-Server-Token')
+    server = Server.query.filter_by(token=token).first()
+    if not server:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    data = request.json
+    server.last_heartbeat = datetime.datetime.utcnow()
+    server.status = 'online'
+    server.stats = json.dumps(data) # Expect {cpu: x, ram: y}
+    db.session.commit()
+    return jsonify({'status': 'ok'})
+
+@app.route('/api/node/sync', methods=['GET'])
+def node_sync():
+    token = request.headers.get('X-Server-Token')
+    server = Server.query.filter_by(token=token).first()
+    if not server:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    # Get active accounts for this server
+    accounts = Account.query.filter_by(server_id=server.id, status='active').all()
+    account_list = []
+    for acc in accounts:
+        account_list.append({
+            'username': acc.username,
+            'password': acc.password,
+            'uuid': acc.uuid,
+            'protocol': acc.protocol,
+            'expiry': acc.expiry_date.isoformat()
+        })
+
+    return jsonify({'accounts': account_list})
+
+@app.route('/api/setup/install.sh')
+def get_install_script():
+    # Dynamic script generation
+    # We don't have the server token here easily unless passed as query param or generic installer
+    # Plan: User runs `curl domain/api/setup/install.sh | bash -s -- <token>`
+
+    host = request.host_url.rstrip('/')
+    script = f"""#!/bin/bash
+# ZIVPN & Xray Node Installer
+# Usage: bash install.sh <token>
+
+TOKEN=$1
+MASTER_URL="{host}"
+
+if [ -z "$TOKEN" ]; then
+    echo "Error: Token required."
+    echo "Usage: bash install.sh <token>"
+    exit 1
+fi
+
+echo "--- BANSOS ZIVPN Node Installer ---"
+echo "Master URL: $MASTER_URL"
+echo "Token: $TOKEN"
+
+# 1. Install Dependencies
+apt-get update
+apt-get install -y python3 python3-pip curl unzip socat
+pip3 install requests psutil
+
+# 2. Install Xray Core
+echo "Installing Xray..."
+bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
+
+# 2b. Install ZIVPN (UDP)
+echo "Installing ZIVPN..."
+mkdir -p /usr/local/etc/zivpn
+cd /usr/local/bin
+wget -O zivpn https://github.com/zahidbd2/udp-zivpn/raw/main/zivpn
+chmod +x zivpn
+
+# Create ZIVPN Service (UDP Port 7200 default)
+cat <<EOF > /etc/systemd/system/zivpn.service
+[Unit]
+Description=ZIVPN UDP Service
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/zivpn --port 7200 --users /usr/local/etc/zivpn/users.json
+Restart=always
+User=root
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable zivpn
+systemctl start zivpn
+
+# 3. Create Agent Script
+mkdir -p /usr/local/zivpn-agent
+cat <<EOF > /usr/local/zivpn-agent/agent.py
+import requests
+import time
+import psutil
+import subprocess
+import json
+import os
+
+MASTER_URL = "$MASTER_URL"
+TOKEN = "$TOKEN"
+XRAY_CONFIG_PATH = "/usr/local/etc/xray/config.json"
+ZIVPN_USERS_PATH = "/usr/local/etc/zivpn/users.json"
+
+def get_stats():
+    return {{
+        'cpu': psutil.cpu_percent(),
+        'ram': psutil.virtual_memory().percent
+    }}
+
+def update_zivpn_config(accounts):
+    # Filter UDP accounts
+    udp_users = [
+        {'username': acc['username'], 'password': acc['password']}
+        for acc in accounts if acc.get('protocol') == 'udp'
+    ]
+
+    # Write to users.json (Format depends on binary, assuming standard JSON list or dict)
+    # If binary uses specific format, this needs adjustment.
+    # For now, writing a standard JSON structure.
+    try:
+        with open(ZIVPN_USERS_PATH, 'w') as f:
+            json.dump(udp_users, f, indent=2)
+
+        # Reload/Restart ZIVPN
+        os.system("systemctl restart zivpn")
+    except Exception as e:
+        print(f"Error updating ZIVPN: {e}")
+
+def update_xray_config(accounts):
+    # Basic Xray Config Template
+    inbounds = []
+
+    # VMESS
+    vmess_users = [
+        {{'id': acc['uuid'], 'alterId': 0, 'email': acc['username']}}
+        for acc in accounts if acc['protocol'] == 'vmess'
+    ]
+    if vmess_users:
+        inbounds.append({{
+            "port": 10001,
+            "protocol": "vmess",
+            "settings": {{"clients": vmess_users}},
+            "streamSettings": {{"network": "ws", "wsSettings": {{"path": "/vmess"}}}}
+        }})
+
+    # VLESS
+    vless_users = [
+        {{'id': acc['uuid'], 'email': acc['username']}}
+        for acc in accounts if acc['protocol'] == 'vless'
+    ]
+    if vless_users:
+        inbounds.append({{
+            "port": 10002,
+            "protocol": "vless",
+            "settings": {{"clients": vless_users, "decryption": "none"}},
+            "streamSettings": {{"network": "ws", "wsSettings": {{"path": "/vless"}}}}
+        }})
+
+    # TROJAN
+    trojan_users = [
+        {{'password': acc['uuid'], 'email': acc['username']}}
+        for acc in accounts if acc['protocol'] == 'trojan'
+    ]
+    if trojan_users:
+        inbounds.append({{
+            "port": 10003,
+            "protocol": "trojan",
+            "settings": {{"clients": trojan_users}},
+            "streamSettings": {{"network": "ws", "wsSettings": {{"path": "/trojan"}}}}
+        }})
+
+    config = {{
+        "log": {{"loglevel": "warning"}},
+        "inbounds": inbounds,
+        "outbounds": [{{"protocol": "freedom"}}]
+    }}
+
+    with open(XRAY_CONFIG_PATH, 'w') as f:
+        json.dump(config, f, indent=2)
+
+    # Restart Xray
+    os.system("systemctl restart xray")
+
+def main():
+    print("Agent started...")
+    while True:
+        try:
+            # 1. Heartbeat
+            stats = get_stats()
+            requests.post(f"{{MASTER_URL}}/api/node/heartbeat",
+                          json=stats, headers={{'X-Server-Token': TOKEN}}, timeout=10)
+
+            # 2. Sync Accounts
+            r = requests.get(f"{{MASTER_URL}}/api/node/sync",
+                             headers={{'X-Server-Token': TOKEN}}, timeout=10)
+            if r.status_code == 200:
+                data = r.json()
+                accs = data.get('accounts', [])
+                update_xray_config(accs)
+                update_zivpn_config(accs)
+
+        except Exception as e:
+            print(f"Error: {{e}}")
+
+        time.sleep(60)
+
+if __name__ == "__main__":
+    main()
+EOF
+
+# 4. Install Service
+cat <<EOF > /etc/systemd/system/zivpn-agent.service
+[Unit]
+Description=ZIVPN Node Agent
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 /usr/local/zivpn-agent/agent.py
+Restart=always
+User=root
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable zivpn-agent
+systemctl start zivpn-agent
+
+echo "Installation Complete! Agent is running."
+"""
+    return script, 200, {'Content-Type': 'text/plain'}
 
 if __name__ == '__main__':
     if not os.path.exists('database.db'):
         init_db()
+    else:
+        # Hack to ensure tables exist in dev mode without migration tool
+        init_db()
+
     app.run(debug=True, host='0.0.0.0', port=5000)
