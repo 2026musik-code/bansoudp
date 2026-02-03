@@ -204,10 +204,27 @@ def buy():
         # Typically: { success: true, data: { payment_url: "...", ... } }
         # Or direct fields. Based on typical structure.
 
-        if r.status_code == 200 and resp_data.get('success', True): # permissive check
+        # Check success status (handles 'success': true or 'status': 'success')
+        is_success = (r.status_code == 200) and (
+            resp_data.get('success') is True or
+            resp_data.get('status') == 'success'
+        )
+
+        if is_success:
             # Look for payment_url or similar
             data = resp_data.get('data', resp_data)
-            payment_url = data.get('payment_url') or data.get('redirect_url')
+
+            # Try multiple known keys
+            payment_url = (
+                data.get('pay_url') or
+                data.get('payment_url') or
+                data.get('redirect_url')
+            )
+
+            # Also check nested payment_info for qr_url or payment_page
+            if not payment_url and 'payment_info' in data:
+                info = data['payment_info']
+                payment_url = info.get('payment_page') or info.get('qr_url')
 
             if payment_url:
                 return redirect(payment_url)
