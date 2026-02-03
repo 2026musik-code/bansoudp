@@ -613,7 +613,7 @@ def get_stats():
 def update_zivpn_config(accounts):
     # Filter UDP accounts
     udp_users = [
-        {'username': acc['username'], 'password': acc['password']}
+        {{'username': acc['username'], 'password': acc['password']}}
         for acc in accounts if acc.get('protocol') == 'udp'
     ]
 
@@ -627,7 +627,7 @@ def update_zivpn_config(accounts):
         # Reload/Restart ZIVPN
         os.system("systemctl restart zivpn")
     except Exception as e:
-        print(f"Error updating ZIVPN: {e}")
+        print(f"Error updating ZIVPN: {{e}}")
 
 def update_xray_config(accounts):
     # Basic Xray Config Template
