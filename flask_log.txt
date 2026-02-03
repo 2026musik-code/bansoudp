@@ -24,3 +24,17 @@
 127.0.0.1 - - [03/Feb/2026 12:10:28] "[32mPOST /admin/login HTTP/1.1[0m" 302 -
 127.0.0.1 - - [03/Feb/2026 12:10:28] "GET /admin/dashboard HTTP/1.1" 200 -
 127.0.0.1 - - [03/Feb/2026 12:10:28] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+127.0.0.1 - - [03/Feb/2026 12:50:55] "GET /admin/login HTTP/1.1" 200 -
+127.0.0.1 - - [03/Feb/2026 12:50:55] "GET /static/style.css HTTP/1.1" 200 -
+127.0.0.1 - - [03/Feb/2026 12:50:56] "[32mPOST /admin/login HTTP/1.1[0m" 302 -
+127.0.0.1 - - [03/Feb/2026 12:50:56] "GET /admin/dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [03/Feb/2026 12:50:56] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+127.0.0.1 - - [03/Feb/2026 12:50:56] "GET /admin/servers HTTP/1.1" 200 -
+127.0.0.1 - - [03/Feb/2026 12:50:56] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+127.0.0.1 - - [03/Feb/2026 12:53:30] "GET /admin/login HTTP/1.1" 200 -
+127.0.0.1 - - [03/Feb/2026 12:53:30] "GET /static/style.css HTTP/1.1" 200 -
+127.0.0.1 - - [03/Feb/2026 12:53:31] "[32mPOST /admin/login HTTP/1.1[0m" 302 -
+127.0.0.1 - - [03/Feb/2026 12:53:31] "GET /admin/dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [03/Feb/2026 12:53:31] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+127.0.0.1 - - [03/Feb/2026 12:53:31] "GET /admin/servers HTTP/1.1" 200 -
+127.0.0.1 - - [03/Feb/2026 12:53:31] "[36mGET /static/style.css HTTP/1.1[0m" 304 -

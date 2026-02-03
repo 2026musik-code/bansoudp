@@ -74,25 +74,6 @@
                                 </form>
                             </td>
                         </tr>
-
-                        <!-- Modal for Install Command -->
-                        <div class="modal fade" id="installModal{{ server.id }}" tabindex="-1" aria-hidden="true">
-                            <div class="modal-dialog">
-                                <div class="modal-content bg-dark text-white glass-card">
-                                    <div class="modal-header border-secondary">
-                                        <h5 class="modal-title">Install Node: {{ server.name }}</h5>
-                                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                                    </div>
-                                    <div class="modal-body">
-                                        <p>Jalankan perintah ini di VPS <strong>{{ server.ip_address }}</strong>:</p>
-                                        <div class="bg-black p-3 rounded position-relative">
-                                            <code id="cmd{{ server.id }}" style="word-break: break-all; user-select: all;">curl -s {{ request.host_url }}api/setup/install.sh | bash -s -- {{ server.token }}</code>
-                                            <button class="btn btn-sm btn-light position-absolute top-0 end-0 m-2" onclick="copyToClipboard('cmd{{ server.id }}')">Copy</button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -101,6 +82,27 @@
     </div>
 </div>
 
+<!-- Modals outside the table to avoid stacking context issues -->
+{% for server in servers %}
+<div class="modal fade" id="installModal{{ server.id }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark text-white glass-card" style="border: 1px solid rgba(255,255,255,0.2);">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title">Install Node: {{ server.name }}</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Jalankan perintah ini di VPS <strong>{{ server.ip_address }}</strong>:</p>
+                <div class="bg-black p-3 rounded position-relative">
+                    <code id="cmd{{ server.id }}" style="word-break: break-all; user-select: all;">curl -s {{ request.host_url }}api/setup/install.sh | bash -s -- {{ server.token }}</code>
+                    <button class="btn btn-sm btn-light position-absolute top-0 end-0 m-2" onclick="copyToClipboard('cmd{{ server.id }}')">Copy</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endfor %}
+
 <script>
 function copyToClipboard(elementId) {
     var copyText = document.getElementById(elementId).innerText;
@@ -108,7 +110,7 @@ function copyToClipboard(elementId) {
     // Try the modern API first if available and secure
     if (navigator.clipboard && window.isSecureContext) {
         navigator.clipboard.writeText(copyText).then(function() {
-            alert("Command copied to clipboard!");
+            showToast("Command copied to clipboard!", "success");
         }).catch(function(err) {
             console.error('Async: Could not copy text: ', err);
             fallbackCopyTextToClipboard(copyText);
@@ -122,28 +124,46 @@ function fallbackCopyTextToClipboard(text) {
     var textArea = document.createElement("textarea");
     textArea.value = text;
 
-    // Ensure it's not visible but part of the DOM
+    // Ensure it's visible to the browser but hidden from user (opacity 0)
+    // Moving it off-screen (-9999px) can sometimes cause mobile browsers to ignore selection
     textArea.style.position = "fixed";
-    textArea.style.left = "-9999px";
+    textArea.style.left = "0";
     textArea.style.top = "0";
+    textArea.style.width = "2em";
+    textArea.style.height = "2em";
+    textArea.style.padding = "0";
+    textArea.style.border = "none";
+    textArea.style.outline = "none";
+    textArea.style.boxShadow = "none";
+    textArea.style.background = "transparent";
+    textArea.style.opacity = "0";
+    textArea.setAttribute("readonly", ""); // Prevent keyboard popup
 
     document.body.appendChild(textArea);
     textArea.focus();
     textArea.select();
+    textArea.setSelectionRange(0, 99999); // For mobile devices
 
     try {
         var successful = document.execCommand('copy');
         if (successful) {
-            alert("Command copied to clipboard!");
+            showToast("Command copied to clipboard!", "success");
         } else {
-            alert("Failed to copy automatically. Please select the text and copy manually.");
+            showToast("Manual copy needed. Text selected.", "warning");
         }
     } catch (err) {
         console.error('Fallback: Oops, unable to copy', err);
-        alert("Failed to copy. Please select the text and copy manually.");
+        showToast("Manual copy needed. Text selected.", "warning");
     }
 
     document.body.removeChild(textArea);
+}
+
+function showToast(message, type) {
+    // Simple toast implementation or use bootstrap alerts
+    // For now, let's use the standard alert but cleaner if possible.
+    // Since we don't have a toast container, standard alert is safest for ensuring user sees it.
+    alert(message);
 }
 </script>
 {% endblock %}
