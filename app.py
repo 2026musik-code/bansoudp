@@ -143,10 +143,17 @@ def buy():
     # Check for Payment Gateway redirection
     settings = Settings.query.first()
     if settings and settings.payment_gateway_url and settings.merchant_id:
-        # Generic Redirection Logic
-        # Append params like ?amount=xxx&order_id=xxx
-        payment_url = f"{settings.payment_gateway_url}?merchant_id={settings.merchant_id}&order_id={new_account.id}&amount={settings.price_per_month}&email=user@local.com"
-        return redirect(payment_url)
+        # Prepare parameters for POST request
+        params = {
+            'merchant_id': settings.merchant_id,
+            'order_id': new_account.id,
+            'amount': settings.price_per_month,
+            'email': 'user@local.com',
+            # Add any other required parameters here
+            # 'return_url': url_for('success', account_id=new_account.id, _external=True),
+            # 'callback_url': url_for('payment_callback', _external=True)
+        }
+        return render_template('payment_redirect.html', url=settings.payment_gateway_url, params=params)
 
     return redirect(url_for('payment', account_id=new_account.id))
 
