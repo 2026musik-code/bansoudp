@@ -3,3 +3,4 @@ flask-sqlalchemy
 psutil
 gunicorn
 werkzeug
+requests

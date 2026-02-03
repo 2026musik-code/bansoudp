@@ -53,6 +53,16 @@
                     <label class="form-label">Password</label>
                     <input type="text" name="password" class="form-control" placeholder="Masukkan password baru" required>
                 </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Metode Pembayaran</label>
+                    <select name="channel_code" class="form-select">
+                        {% for channel in channels %}
+                            <option value="{{ channel.code }}">{{ channel.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
                 <div class="mb-3">
                     <label class="form-label">Server IP</label>
                     <input type="text" class="form-control" value="{{ stats.ip }}" disabled>
@@ -61,7 +71,7 @@
 
                 <div class="d-grid gap-2">
                     <button type="submit" class="btn btn-custom btn-lg">
-                        <i class="fas fa-bolt"></i> Beli Sekarang (QRIS)
+                        <i class="fas fa-bolt"></i> Beli Sekarang
                     </button>
                 </div>
             </form>
@@ -76,8 +86,9 @@
             <h4><i class="fas fa-info-circle"></i> Cara Kerja</h4>
             <ol class="text-muted">
                 <li>Isi Username dan Password yang diinginkan.</li>
+                <li>Pilih metode pembayaran (QRIS, E-Wallet, VA).</li>
                 <li>Klik tombol Beli.</li>
-                <li>Scan QR Code yang muncul untuk pembayaran.</li>
+                <li>Lakukan pembayaran sesuai instruksi.</li>
                 <li>Setelah pembayaran berhasil, Anda akan menerima <strong>PIN</strong>.</li>
                 <li>Gunakan PIN tersebut untuk melihat detail akun Anda di menu "List Akun".</li>
             </ol>

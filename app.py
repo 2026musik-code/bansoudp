@@ -8,8 +8,12 @@ import random
 import string
 import socket
 import subprocess
+import requests
+import json
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 app = Flask(__name__)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 app.config['SECRET_KEY'] = 'bansos-zivpn-secret-key-change-me'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -30,12 +34,8 @@ class Admin(db.Model):
 
 class Settings(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    qr_api_key = db.Column(db.String(255), nullable=True) # Used for Manual/QR
+    paymenku_api_key = db.Column(db.String(255), nullable=True)
     price_per_month = db.Column(db.Integer, default=10000)
-    # Generic Payment Gateway Config
-    payment_gateway_url = db.Column(db.String(255), nullable=True)
-    merchant_id = db.Column(db.String(100), nullable=True)
-    server_key = db.Column(db.String(100), nullable=True)
 
 class Account(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -45,7 +45,11 @@ class Account(db.Model):
     pin = db.Column(db.String(10), unique=True, nullable=False) # The PIN needed to access
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
     expiry_date = db.Column(db.DateTime, nullable=False)
-    status = db.Column(db.String(20), default='active') # active, expired
+    status = db.Column(db.String(20), default='pending') # pending, active, expired
+
+    # Paymenku specific
+    reference_id = db.Column(db.String(100), unique=True, nullable=True)
+    trx_id = db.Column(db.String(100), nullable=True)
 
 # --- Helper Functions ---
 def get_system_stats():
@@ -58,11 +62,7 @@ def get_system_stats():
     traffic_sent = round(net.bytes_sent / (1024 * 1024), 2) # MB
     traffic_recv = round(net.bytes_recv / (1024 * 1024), 2) # MB
 
-    # Get Public IP (Best effort)
     try:
-        # This is a bit hacky, but standard for quick VPS checks without external calls if possible
-        # but usually external is needed for public IP.
-        # Using a dummy value if offline, or a simple socket trick
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
         local_ip = s.getsockname()[0]
@@ -84,14 +84,32 @@ def init_db():
         db.create_all()
         if not Admin.query.filter_by(username='admin').first():
             admin = Admin(username='admin')
-            admin.set_password('admin123') # Default password
+            admin.set_password('admin123')
             db.session.add(admin)
 
         if not Settings.query.first():
-            settings = Settings(qr_api_key='YOUR_API_KEY_HERE')
+            settings = Settings(paymenku_api_key='')
             db.session.add(settings)
 
         db.session.commit()
+
+def get_paymenku_channels(api_key):
+    if not api_key:
+        return []
+    try:
+        headers = {'Authorization': f'Bearer {api_key}'}
+        response = requests.get('https://paymenku.com/api/v1/payment-channels', headers=headers, timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            # Assuming the response is a list of channels or wrapped in data
+            # Based on image 2, it looks like a list or table.
+            # Usually APIs return { success: true, data: [...] } or just [...]
+            # We'll assume direct list or data key.
+            # If parsing fails, return defaults.
+            return data if isinstance(data, list) else data.get('data', [])
+    except:
+        pass
+    return []
 
 # --- User Routes ---
 @app.route('/')
@@ -101,20 +119,38 @@ def index():
 @app.route('/dashboard')
 def dashboard():
     stats = get_system_stats()
-    return render_template('dashboard.html', stats=stats)
+    settings = Settings.query.first()
+    channels = []
+    if settings and settings.paymenku_api_key:
+        channels = get_paymenku_channels(settings.paymenku_api_key)
+
+    # Fallback if API fails or no key, just so UI shows something
+    if not channels:
+        channels = [
+            {'code': 'qris', 'name': 'QRIS', 'type': 'qris'},
+            {'code': 'bca_va', 'name': 'BCA Virtual Account', 'type': 'va'},
+            {'code': 'dana', 'name': 'DANA', 'type': 'ewallet'}
+        ]
+
+    return render_template('dashboard.html', stats=stats, settings=settings, channels=channels)
 
 @app.route('/buy', methods=['POST'])
 def buy():
     username = request.form.get('username')
     password = request.form.get('password')
+    channel_code = request.form.get('channel_code')
 
     if not username or not password:
         flash('Username dan Password wajib diisi!', 'danger')
         return redirect(url_for('dashboard'))
 
-    # Check if username exists
     if Account.query.filter_by(username=username).first():
         flash('Username sudah digunakan. Pilih yang lain.', 'warning')
+        return redirect(url_for('dashboard'))
+
+    settings = Settings.query.first()
+    if not settings or not settings.paymenku_api_key:
+        flash('Sistem pembayaran belum dikonfigurasi admin.', 'danger')
         return redirect(url_for('dashboard'))
 
     stats = get_system_stats()
@@ -125,7 +161,10 @@ def buy():
     while Account.query.filter_by(pin=pin).first():
         pin = str(random.randint(100000, 999999))
 
-    # Create Pending Account (30 days expiry default)
+    # Reference ID for Paymenku
+    reference_id = f"INV-{int(datetime.datetime.utcnow().timestamp())}-{random.randint(100,999)}"
+
+    # Create Pending Account
     expiry = datetime.datetime.utcnow() + datetime.timedelta(days=30)
 
     new_account = Account(
@@ -134,86 +173,90 @@ def buy():
         ip_address=server_ip,
         pin=pin,
         expiry_date=expiry,
-        status='pending' # Waiting for payment
+        status='pending',
+        reference_id=reference_id
     )
 
     db.session.add(new_account)
     db.session.commit()
 
-    # Check for Payment Gateway redirection
-    settings = Settings.query.first()
-    if settings and settings.payment_gateway_url and settings.merchant_id:
-        # Prepare parameters for POST request
-        params = {
-            'merchant_id': settings.merchant_id,
-            'order_id': new_account.id,
-            'amount': settings.price_per_month,
-            'email': 'user@local.com',
-            # Add any other required parameters here
-            # 'return_url': url_for('success', account_id=new_account.id, _external=True),
-            # 'callback_url': url_for('payment_callback', _external=True)
-        }
-        return render_template('payment_redirect.html', url=settings.payment_gateway_url, params=params)
+    # Call Paymenku API
+    payload = {
+        "reference_id": reference_id,
+        "amount": settings.price_per_month,
+        "customer_name": username,
+        "customer_email": "user@zivpn.local", # Placeholder as we don't ask email
+        "customer_phone": "08123456789", # Placeholder
+        "channel_code": channel_code if channel_code else "qris",
+        "return_url": url_for('success', account_id=new_account.id, _external=True)
+    }
 
-    return redirect(url_for('payment', account_id=new_account.id))
+    headers = {
+        "Authorization": f"Bearer {settings.paymenku_api_key}",
+        "Content-Type": "application/json"
+    }
+
+    try:
+        r = requests.post("https://paymenku.com/api/v1/transaction/create", json=payload, headers=headers, timeout=10)
+        resp_data = r.json()
+
+        # We expect a success response with a payment URL or QR string
+        # Typically: { success: true, data: { payment_url: "...", ... } }
+        # Or direct fields. Based on typical structure.
+
+        if r.status_code == 200 and resp_data.get('success', True): # permissive check
+            # Look for payment_url or similar
+            data = resp_data.get('data', resp_data)
+            payment_url = data.get('payment_url') or data.get('redirect_url')
+
+            if payment_url:
+                return redirect(payment_url)
+            else:
+                # If no URL, maybe it returns raw QR?
+                # For now assume redirect.
+                flash(f"Error getting payment URL: {resp_data}", 'danger')
+        else:
+            flash(f"Payment Gateway Error: {resp_data.get('message', r.text)}", 'danger')
+
+    except Exception as e:
+        flash(f"Connection Error: {str(e)}", 'danger')
+
+    # If failed, delete the pending account so they can try again with same username
+    db.session.delete(new_account)
+    db.session.commit()
+    return redirect(url_for('dashboard'))
 
 @app.route('/callback', methods=['POST'])
 def payment_callback():
-    # Generic Handler stub
-    # In a real scenario, we would verify the signature using settings.server_key
-    data = request.json or request.form
+    # Payload: { "event": "payment.status_updated", "trx_id": "...", "reference_id": "...", "status": "paid", ... }
+    data = request.json
 
-    # Assumption: Gateway sends 'order_id' and 'status'
-    order_id = data.get('order_id')
-    status = data.get('status') # e.g., 'PAID', 'SUCCESS'
+    if not data:
+        return jsonify({'status': 'no data'}), 400
 
-    if order_id and status in ['PAID', 'SUCCESS', 'paid', 'success']:
-        account = Account.query.get(order_id)
+    reference_id = data.get('reference_id')
+    status = data.get('status')
+    trx_id = data.get('trx_id')
+
+    if reference_id and status == 'paid':
+        account = Account.query.filter_by(reference_id=reference_id).first()
         if account:
             account.status = 'active'
+            account.trx_id = trx_id
             db.session.commit()
-            return jsonify({'status': 'ok'})
+            return jsonify({'success': True})
 
-    return jsonify({'status': 'failed'}), 400
-
-@app.route('/payment/<int:account_id>')
-def payment(account_id):
-    account = Account.query.get_or_404(account_id)
-    if account.status == 'active':
-        return redirect(url_for('success', account_id=account.id))
-
-    settings = Settings.query.first()
-    # If using a real QR API, we'd format the data string here
-    # For now, we use the API Key as the data or just a placeholder string + price
-    payment_data = f"{settings.qr_api_key}-{account.id}" if settings.qr_api_key else f"PAY-{account.id}"
-
-    return render_template('payment.html',
-                           payment_data=payment_data,
-                           price=settings.price_per_month,
-                           account_id=account.id)
-
-@app.route('/check_payment/<int:account_id>', methods=['POST'])
-def check_payment(account_id):
-    account = Account.query.get_or_404(account_id)
-
-    # SIMULATION: In a real app, verify callback from payment gateway here.
-    # Here we assume it's successful since user clicked "I Paid"
-
-    account.status = 'active'
-    db.session.commit()
-
-    # Logic to Create VPN User in System (Placeholder)
-    # create_vpn_user(account.username, account.password)
-
-    return redirect(url_for('success', account_id=account.id))
+    return jsonify({'success': False}), 200
 
 @app.route('/success/<int:account_id>')
 def success(account_id):
     account = Account.query.get_or_404(account_id)
+    # If users hit return_url but callback hasn't fired yet, we might want to check status manually
     if account.status != 'active':
-        return redirect(url_for('payment', account_id=account.id))
+        # Optional: Call check-status API here if strictly needed
+        flash('Pembayaran sedang diproses. Tunggu sebentar atau refresh.', 'info')
 
-    return render_template('success.html', pin=account.pin)
+    return render_template('success.html', pin=account.pin, account=account)
 
 @app.route('/list', methods=['GET', 'POST'])
 def list_accounts():
@@ -226,7 +269,7 @@ def list_accounts():
                 flash('PIN tidak ditemukan.', 'danger')
             elif account.status != 'active':
                 flash('Akun belum aktif atau sudah kadaluarsa.', 'warning')
-                account = None # Hide details if not active
+                account = None
 
     return render_template('list.html', account=account)
 
@@ -299,10 +342,7 @@ def update_settings():
         return redirect(url_for('admin_login'))
 
     settings = Settings.query.first()
-    settings.qr_api_key = request.form.get('qr_api_key')
-    settings.payment_gateway_url = request.form.get('payment_gateway_url')
-    settings.merchant_id = request.form.get('merchant_id')
-    settings.server_key = request.form.get('server_key')
+    settings.paymenku_api_key = request.form.get('paymenku_api_key')
 
     try:
         settings.price_per_month = int(request.form.get('price'))
@@ -320,7 +360,7 @@ def change_password():
 
     new_password = request.form.get('new_password')
     if new_password:
-        admin = Admin.query.filter_by(username='admin').first() # Assuming single admin
+        admin = Admin.query.filter_by(username='admin').first()
         if admin:
             admin.set_password(new_password)
             db.session.commit()
@@ -333,15 +373,10 @@ def system_update():
     if not session.get('admin_logged_in'):
         return redirect(url_for('admin_login'))
 
-    # Execute git pull and restart service
     try:
-        # Check if .git exists to avoid errors in non-git envs (like this sandbox initially)
         if os.path.exists('.git'):
             subprocess.run(['git', 'pull'], check=True)
             flash('System updated from GitHub. Restarting service...', 'success')
-            # Trigger service restart (requires sudo/permissions, handled by install script usually allowing passwordless sudo for this command or just killing the python process)
-            # subprocess.Popen(['sudo', 'systemctl', 'restart', 'bansos-zivpn'])
-            # In this sandbox, we just flash message.
         else:
              flash('Git repository not found. Cannot update.', 'warning')
     except Exception as e:

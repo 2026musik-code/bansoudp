@@ -32,6 +32,7 @@
                                     <th>IP</th>
                                     <th>Expired</th>
                                     <th>Status</th>
+                                    <th>Ref ID</th>
                                     <th>Aksi</th>
                                 </tr>
                             </thead>
@@ -44,6 +45,7 @@
                                     <td>
                                         <span class="badge bg-{{ 'success' if account.status == 'active' else 'secondary' }}">{{ account.status }}</span>
                                     </td>
+                                    <td><small>{{ account.reference_id }}</small></td>
                                     <td>
                                         <div class="btn-group btn-group-sm">
                                             <!-- Extend -->
@@ -69,33 +71,20 @@
             <!-- Settings Tab -->
             <div class="tab-pane fade" id="list-settings" role="tabpanel">
                 <div class="glass-card mb-4">
-                    <h4>Pengaturan Pembayaran</h4>
+                    <h4>Pengaturan Pembayaran (Paymenku)</h4>
                     <form action="{{ url_for('update_settings') }}" method="POST">
-                        <div class="mb-3">
-                            <label class="form-label">QRIS API Key / Content (Manual Payment)</label>
-                            <input type="text" name="qr_api_key" class="form-control" value="{{ settings.qr_api_key }}">
-                            <small class="text-muted">Data untuk QR Code manual.</small>
-                        </div>
                         <div class="mb-3">
                             <label class="form-label">Harga per Bulan (IDR)</label>
                             <input type="number" name="price" class="form-control" value="{{ settings.price_per_month }}">
                         </div>
 
                         <hr class="border-secondary my-4">
-                        <h5>Generic Payment Gateway</h5>
-                        <p class="text-muted small">Isi jika ingin menggunakan auto-payment gateway (misal: Paymentku, Tripay, dll).</p>
+                        <h5>API Configuration</h5>
 
                         <div class="mb-3">
-                            <label class="form-label">Payment Gateway URL</label>
-                            <input type="text" name="payment_gateway_url" class="form-control" value="{{ settings.payment_gateway_url or '' }}" placeholder="https://domain-pembayaran.com/api/create">
-                        </div>
-                         <div class="mb-3">
-                            <label class="form-label">Merchant ID</label>
-                            <input type="text" name="merchant_id" class="form-control" value="{{ settings.merchant_id or '' }}">
-                        </div>
-                         <div class="mb-3">
-                            <label class="form-label">Server/Callback Key</label>
-                            <input type="text" name="server_key" class="form-control" value="{{ settings.server_key or '' }}">
+                            <label class="form-label">Paymenku API Key</label>
+                            <input type="text" name="paymenku_api_key" class="form-control" value="{{ settings.paymenku_api_key or '' }}" placeholder="Paste API Key here">
+                            <small class="text-muted">Dapatkan API Key dari dashboard Paymenku.</small>
                         </div>
                         <button type="submit" class="btn btn-custom">Simpan Pengaturan</button>
                     </form>
