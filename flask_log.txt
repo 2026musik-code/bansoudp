@@ -15,3 +15,12 @@
 127.0.0.1 - - [03/Feb/2026 11:33:38] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
 127.0.0.1 - - [03/Feb/2026 11:33:38] "GET /admin/servers HTTP/1.1" 200 -
 127.0.0.1 - - [03/Feb/2026 11:33:38] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+ * Detected change in '/app/app.py', reloading
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 410-907-091
+127.0.0.1 - - [03/Feb/2026 12:10:27] "GET /admin/login HTTP/1.1" 200 -
+127.0.0.1 - - [03/Feb/2026 12:10:27] "GET /static/style.css HTTP/1.1" 200 -
+127.0.0.1 - - [03/Feb/2026 12:10:28] "[32mPOST /admin/login HTTP/1.1[0m" 302 -
+127.0.0.1 - - [03/Feb/2026 12:10:28] "GET /admin/dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [03/Feb/2026 12:10:28] "[36mGET /static/style.css HTTP/1.1[0m" 304 -

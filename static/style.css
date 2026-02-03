@@ -1,103 +1,83 @@
-:root {
-    --primary-color: #00d2ff;
-    --secondary-color: #3a7bd5;
-    --accent-color: #92fe9d;
-    --dark-bg: #0f0c29;
-    --glass-bg: rgba(255, 255, 255, 0.05);
-    --glass-border: rgba(255, 255, 255, 0.1);
-    --text-main: #ffffff;
-    --text-muted: #a0a0a0;
-}
-
 body {
-    background: var(--dark-bg);
     background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
-    color: var(--text-main);
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     min-height: 100vh;
-}
-
-.navbar {
-    background: rgba(0, 0, 0, 0.3) !important;
-    backdrop-filter: blur(10px);
-    border-bottom: 1px solid var(--glass-border);
-}
-
-.navbar-brand {
-    font-weight: 700;
-    letter-spacing: 1px;
-    background: linear-gradient(to right, var(--primary-color), var(--accent-color));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    font-size: 1.5rem;
+    color: #fff;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .glass-card {
-    background: var(--glass-bg);
-    backdrop-filter: blur(15px);
-    -webkit-backdrop-filter: blur(15px);
-    border: 1px solid var(--glass-border);
-    border-radius: 15px;
-    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
-    padding: 20px;
-    margin-bottom: 20px;
-    transition: transform 0.3s ease;
-}
-
-.glass-card:hover {
-    transform: translateY(-5px);
-}
-
-.btn-custom {
-    background: linear-gradient(45deg, var(--secondary-color), var(--primary-color));
-    border: none;
-    color: white;
-    padding: 10px 20px;
-    border-radius: 25px;
-    font-weight: 600;
-    box-shadow: 0 4px 15px rgba(0, 210, 255, 0.3);
-    transition: all 0.3s ease;
-}
-
-.btn-custom:hover {
-    transform: scale(1.05);
-    box-shadow: 0 6px 20px rgba(0, 210, 255, 0.5);
-    color: white;
-}
-
-.form-control {
     background: rgba(255, 255, 255, 0.05);
-    border: 1px solid var(--glass-border);
-    color: white;
-    border-radius: 10px;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 15px;
+    padding: 20px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    margin-bottom: 20px;
 }
 
-.form-control:focus {
-    background: rgba(255, 255, 255, 0.1);
-    color: white;
-    border-color: var(--primary-color);
-    box-shadow: 0 0 10px rgba(0, 210, 255, 0.2);
+.navbar {
+    background: rgba(15, 12, 41, 0.9) !important;
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.stat-value {
-    font-size: 2rem;
-    font-weight: 700;
-    background: linear-gradient(to right, #fff, #ccc);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-}
-
-.stat-label {
-    color: var(--text-muted);
-    font-size: 0.9rem;
-    text-transform: uppercase;
+.navbar-brand {
+    font-weight: bold;
     letter-spacing: 1px;
 }
 
-table {
-    color: white !important;
+.form-control, .form-select {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #fff;
+}
+
+.form-control:focus, .form-select:focus {
+    background: rgba(255, 255, 255, 0.15);
+    color: #fff;
+    box-shadow: none;
+    border-color: #00f260;
+}
+
+.form-control::placeholder {
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.table {
+    color: #fff;
 }
 
 .table-hover tbody tr:hover {
+    color: #fff;
     background-color: rgba(255, 255, 255, 0.05);
+}
+
+.btn-primary {
+    background: linear-gradient(to right, #0575E6, #021B79);
+    border: none;
+}
+
+.btn-success {
+    background: linear-gradient(to right, #00b09b, #96c93d);
+    border: none;
+}
+
+/* Mobile Responsiveness Tweaks */
+@media (max-width: 768px) {
+    .glass-card {
+        padding: 15px;
+    }
+
+    .container-fluid {
+        padding-left: 10px;
+        padding-right: 10px;
+    }
+
+    h2, h3, h4 {
+        font-size: 1.5rem;
+    }
+
+    .table-responsive {
+        font-size: 0.85rem;
+    }
 }

@@ -432,14 +432,31 @@ def change_password():
 def system_update():
     if not session.get('admin_logged_in'):
         return redirect(url_for('admin_login'))
+
+    repo_url = "https://github.com/2026musik-code/bansoudp.git"
+    branch = "bansos-zivpn-web-14439126923524383263"
+
     try:
-        if os.path.exists('.git'):
-            subprocess.run(['git', 'pull'], check=True)
-            flash('System updated from GitHub. Restarting service...', 'success')
-        else:
-             flash('Git repository not found. Cannot update.', 'warning')
+        # Check if .git exists, if not initialize
+        if not os.path.exists('.git'):
+            subprocess.run(['git', 'init'], check=True)
+            subprocess.run(['git', 'remote', 'add', 'origin', repo_url], check=True)
+
+        # Fetch latest
+        subprocess.run(['git', 'fetch', 'origin'], check=True)
+
+        # Reset hard to match remote branch
+        # We try the specific branch first, if fails, fallback might be needed but user specified this branch
+        subprocess.run(['git', 'reset', '--hard', f'origin/{branch}'], check=True)
+
+        flash('System updated successfully from GitHub. Service restarting...', 'success')
+
+        # Optional: Restart service if running via systemd (requires sudo/root usually)
+        # subprocess.run(['systemctl', 'restart', 'bansos-zivpn'], check=False)
+
     except Exception as e:
         flash(f'Update failed: {str(e)}', 'danger')
+
     return redirect(url_for('admin_dashboard'))
 
 # --- Server Management Routes ---
