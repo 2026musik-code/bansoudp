@@ -480,24 +480,35 @@ def system_update():
     repo_url = "https://github.com/2026musik-code/bansoudp.git"
     branch = "bansos-zivpn-web-14439126923524383263"
 
+    # Locate git binary
+    git_cmd = 'git'
+    if os.path.exists('/usr/bin/git'):
+        git_cmd = '/usr/bin/git'
+    elif os.path.exists('/usr/local/bin/git'):
+        git_cmd = '/usr/local/bin/git'
+
     try:
+        # Ensure we are in the application root (where .git should be)
+        cwd = app.root_path
+
         # Check if .git exists, if not initialize
-        if not os.path.exists('.git'):
-            subprocess.run(['git', 'init'], check=True)
-            subprocess.run(['git', 'remote', 'add', 'origin', repo_url], check=True)
+        if not os.path.exists(os.path.join(cwd, '.git')):
+            subprocess.run([git_cmd, 'init'], cwd=cwd, check=True)
+            subprocess.run([git_cmd, 'remote', 'add', 'origin', repo_url], cwd=cwd, check=True)
 
         # Fetch latest
-        subprocess.run(['git', 'fetch', 'origin'], check=True)
+        subprocess.run([git_cmd, 'fetch', 'origin'], cwd=cwd, check=True)
 
         # Reset hard to match remote branch
-        # We try the specific branch first, if fails, fallback might be needed but user specified this branch
-        subprocess.run(['git', 'reset', '--hard', f'origin/{branch}'], check=True)
+        subprocess.run([git_cmd, 'reset', '--hard', f'origin/{branch}'], cwd=cwd, check=True)
 
         flash('System updated successfully from GitHub. Service restarting...', 'success')
 
         # Optional: Restart service if running via systemd (requires sudo/root usually)
         # subprocess.run(['systemctl', 'restart', 'bansos-zivpn'], check=False)
 
+    except FileNotFoundError:
+        flash('Update failed: Git is not installed on the server.', 'danger')
     except Exception as e:
         flash(f'Update failed: {str(e)}', 'danger')
 
@@ -603,10 +614,25 @@ if [ -z "$TOKEN" ]; then
     exit 1
 fi
 
-# Ask for Domain
-read -p "Enter Domain for this Node (e.g., node1.myserver.com): " NODE_DOMAIN
+# Ask for Domain (Argument 2 or Interactive)
+NODE_DOMAIN=$2
+
 if [ -z "$NODE_DOMAIN" ]; then
-    echo "Error: Domain is required."
+    # Try reading from TTY if available (interactive mode)
+    if [ -t 0 ]; then
+        read -p "Enter Domain for this Node (e.g., node1.myserver.com): " NODE_DOMAIN
+    else
+        # If running via pipe curl | bash, stdin is the script.
+        # We try to read from /dev/tty explicitly.
+        if [ -e /dev/tty ]; then
+            read -p "Enter Domain for this Node (e.g., node1.myserver.com): " NODE_DOMAIN < /dev/tty
+        fi
+    fi
+fi
+
+if [ -z "$NODE_DOMAIN" ]; then
+    echo "Error: Domain is required. Please provide it as the second argument:"
+    echo "Usage: curl ... | bash -s -- <token> <domain>"
     exit 1
 fi
 
