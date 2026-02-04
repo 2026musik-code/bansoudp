@@ -51,6 +51,9 @@ class Server(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(80), nullable=False)
     ip_address = db.Column(db.String(50), nullable=False)
+    domain = db.Column(db.String(100), nullable=True) # Node domain
+    country = db.Column(db.String(50), default='Unknown')
+    isp = db.Column(db.String(100), default='Unknown')
     token = db.Column(db.String(100), unique=True, nullable=False)
     last_heartbeat = db.Column(db.DateTime, nullable=True)
     status = db.Column(db.String(20), default='offline') # online, offline
@@ -181,6 +184,7 @@ def buy():
     channel_code = request.form.get('channel_code')
     protocol = request.form.get('protocol', 'udp')
     server_id = request.form.get('server_id')
+    duration = int(request.form.get('duration', 30))
 
     if not username: # Password might be auto-generated for uuid protocols, but let's stick to form
         flash('Username wajib diisi!', 'danger')
@@ -210,7 +214,7 @@ def buy():
         pin = str(random.randint(100000, 999999))
 
     reference_id = f"INV-{int(datetime.datetime.utcnow().timestamp())}-{random.randint(100,999)}"
-    expiry = datetime.datetime.utcnow() + datetime.timedelta(days=30)
+    expiry = datetime.datetime.utcnow() + datetime.timedelta(days=duration)
 
     new_uuid = None
     if protocol in ['vmess', 'vless', 'trojan']:
@@ -239,10 +243,14 @@ def buy():
     db.session.add(new_account)
     db.session.commit()
 
+    # Calculate total price based on duration
+    # Assuming price_per_month is for 30 days
+    total_amount = int((settings.price_per_month / 30) * duration)
+
     # Call Paymenku API (Same as before)
     payload = {
         "reference_id": reference_id,
-        "amount": settings.price_per_month,
+        "amount": total_amount,
         "customer_name": username,
         "customer_email": "user@zivpn.local",
         "customer_phone": "08123456789",
@@ -506,6 +514,15 @@ def node_heartbeat():
     server.last_heartbeat = datetime.datetime.utcnow()
     server.status = 'online'
     server.stats = json.dumps(data) # Expect {cpu: x, ram: y}
+
+    # Update optional info if present
+    if 'domain' in data:
+        server.domain = data['domain']
+    if 'isp' in data:
+        server.isp = data['isp']
+    if 'country' in data:
+        server.country = data['country']
+
     db.session.commit()
     return jsonify({'status': 'ok'})
 
@@ -550,9 +567,17 @@ if [ -z "$TOKEN" ]; then
     exit 1
 fi
 
+# Ask for Domain
+read -p "Enter Domain for this Node (e.g., node1.myserver.com): " NODE_DOMAIN
+if [ -z "$NODE_DOMAIN" ]; then
+    echo "Error: Domain is required."
+    exit 1
+fi
+
 echo "--- BANSOS ZIVPN Node Installer ---"
 echo "Master URL: $MASTER_URL"
 echo "Token: $TOKEN"
+echo "Node Domain: $NODE_DOMAIN"
 
 # 1. Install Dependencies
 apt-get update
@@ -601,13 +626,17 @@ import os
 
 MASTER_URL = "$MASTER_URL"
 TOKEN = "$TOKEN"
+NODE_DOMAIN = "$NODE_DOMAIN"
 XRAY_CONFIG_PATH = "/usr/local/etc/xray/config.json"
 ZIVPN_USERS_PATH = "/usr/local/etc/zivpn/users.json"
 
 def get_stats():
     return {{
         'cpu': psutil.cpu_percent(),
-        'ram': psutil.virtual_memory().percent
+        'ram': psutil.virtual_memory().percent,
+        'domain': NODE_DOMAIN,
+        # 'isp': 'Unknown', # Could use external API to fetch
+        # 'country': 'Unknown'
     }}
 
 def update_zivpn_config(accounts):

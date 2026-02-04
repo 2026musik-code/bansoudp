@@ -1,111 +1,120 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="row mb-5">
-    <!-- Server Stats -->
-    <div class="col-md-4 mb-3">
+<div class="row mb-4">
+    <div class="col-12">
         <div class="glass-card text-center">
-            <div class="stat-label">Domain</div>
-            <div class="stat-value" style="font-size: 1.2rem;">{{ stats.domain }}</div>
-        </div>
-    </div>
-    <div class="col-md-4 mb-3">
-        <div class="glass-card text-center">
-            <div class="stat-label">IP Address</div>
-            <div class="stat-value" style="font-size: 1.2rem;">{{ stats.ip }}</div>
-        </div>
-    </div>
-    <div class="col-md-4 mb-3">
-         <div class="glass-card text-center">
-            <div class="stat-label">Network Traffic</div>
-            <div class="stat-value" style="font-size: 1rem;">
-                <i class="fas fa-arrow-up text-success"></i> {{ stats.traffic_sent }} MB<br>
-                <i class="fas fa-arrow-down text-primary"></i> {{ stats.traffic_recv }} MB
-            </div>
-        </div>
-    </div>
-    <div class="col-md-6 mb-3">
-        <div class="glass-card text-center">
-            <div class="stat-label">CPU Load</div>
-            <div class="stat-value">{{ stats.cpu }}%</div>
-        </div>
-    </div>
-    <div class="col-md-6 mb-3">
-        <div class="glass-card text-center">
-            <div class="stat-label">RAM Usage</div>
-            <div class="stat-value">{{ stats.ram }}%</div>
+            <h1 class="display-5 mb-0"><i class="fas fa-rocket text-primary"></i> PREMIUM VPN PANEL</h1>
+            <p class="text-muted">Fast, Secure, and Reliable Connections</p>
         </div>
     </div>
 </div>
 
-<div class="row justify-content-center">
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="glass-card text-center">
+            <h5><i class="fas fa-microchip text-info"></i> CPU Load</h5>
+            <h3 class="fw-bold">{{ stats.cpu }}%</h3>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="glass-card text-center">
+            <h5><i class="fas fa-memory text-warning"></i> RAM Usage</h5>
+            <h3 class="fw-bold">{{ stats.ram }}%</h3>
+        </div>
+    </div>
     <div class="col-md-6">
         <div class="glass-card">
-            <h3 class="text-center mb-4"><i class="fas fa-shopping-cart"></i> Beli Akun ZIVPN UDP</h3>
-            <p class="text-center text-muted">Nikmati koneksi stabil dan cepat dengan server premium kami.</p>
-
-            <form action="{{ url_for('buy') }}" method="POST">
-                <div class="mb-3">
-                    <label class="form-label">Username</label>
-                    <input type="text" name="username" class="form-control" placeholder="Masukkan username baru" required>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Password</label>
-                    <input type="text" name="password" class="form-control" placeholder="Masukkan password (wajib untuk UDP)" >
-                </div>
-
-                <div class="row">
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">Pilih Protokol</label>
-                        <select name="protocol" class="form-select" id="protocolSelect">
-                            <option value="udp">ZIVPN UDP</option>
-                            <option value="vmess">Vmess WS</option>
-                            <option value="vless">Vless WS</option>
-                            <option value="trojan">Trojan WS</option>
-                        </select>
-                    </div>
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">Pilih Server</label>
-                        <select name="server_id" class="form-select">
-                            {% for server in servers %}
-                                <option value="{{ server.id }}">{{ server.name }} ({{ server.ip_address }})</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                </div>
-
-                <div class="mb-3">
-                    <label class="form-label">Metode Pembayaran</label>
-                    <select name="channel_code" class="form-select">
-                        {% for channel in channels %}
-                            <option value="{{ channel.code }}">{{ channel.name }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-
-                <div class="d-grid gap-2">
-                    <button type="submit" class="btn btn-custom btn-lg">
-                        <i class="fas fa-bolt"></i> Beli Sekarang
-                    </button>
-                </div>
-            </form>
+            <h5><i class="fas fa-info-circle text-success"></i> System Info</h5>
+            <p class="mb-0">
+                <strong>IP:</strong> {{ stats.ip }}<br>
+                <strong>Domain:</strong> {{ stats.domain }}
+            </p>
         </div>
     </div>
 </div>
 
-<!-- How it works -->
-<div class="row mt-5">
-    <div class="col-12">
-        <div class="glass-card">
-            <h4><i class="fas fa-info-circle"></i> Cara Kerja</h4>
-            <ol class="text-muted">
-                <li>Isi Username dan Password yang diinginkan.</li>
-                <li>Pilih metode pembayaran (QRIS, E-Wallet, VA).</li>
-                <li>Klik tombol Beli.</li>
-                <li>Lakukan pembayaran sesuai instruksi.</li>
-                <li>Setelah pembayaran berhasil, Anda akan menerima <strong>PIN</strong>.</li>
-                <li>Gunakan PIN tersebut untuk melihat detail akun Anda di menu "List Akun".</li>
-            </ol>
+<!-- Protocol Tabs -->
+<div class="glass-card mb-4">
+    <ul class="nav nav-pills mb-3 justify-content-center" id="pills-tab" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="pills-all-tab" data-bs-toggle="pill" data-bs-target="#pills-all" type="button" role="tab">ALL SERVER</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="pills-udp-tab" data-bs-toggle="pill" data-bs-target="#pills-udp" type="button" role="tab">UDP ZIVPN</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="pills-vmess-tab" data-bs-toggle="pill" data-bs-target="#pills-vmess" type="button" role="tab">VMESS</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="pills-vless-tab" data-bs-toggle="pill" data-bs-target="#pills-vless" type="button" role="tab">VLESS</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="pills-trojan-tab" data-bs-toggle="pill" data-bs-target="#pills-trojan" type="button" role="tab">TROJAN</button>
+        </li>
+    </ul>
+
+    <div class="tab-content" id="pills-tabContent">
+        <!-- ALL TAB -->
+        <div class="tab-pane fade show active" id="pills-all" role="tabpanel">
+            <div class="row">
+                {% for server in servers %}
+                <div class="col-lg-4 col-md-6 mb-4">
+                    {% include 'includes/server_card.html' %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- PROTOCOL TABS (Currently showing all servers for each, but in real app logic could filter) -->
+        <!-- Since servers support multiple protocols usually, we list them all, but pass the pre-selected protocol to the modal -->
+
+        <div class="tab-pane fade" id="pills-udp" role="tabpanel">
+            <div class="row">
+                {% for server in servers %}
+                <div class="col-lg-4 col-md-6 mb-4">
+                    {% with protocol_override='udp' %}
+                        {% include 'includes/server_card.html' %}
+                    {% endwith %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="tab-pane fade" id="pills-vmess" role="tabpanel">
+            <div class="row">
+                {% for server in servers %}
+                <div class="col-lg-4 col-md-6 mb-4">
+                    {% with protocol_override='vmess' %}
+                        {% include 'includes/server_card.html' %}
+                    {% endwith %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="tab-pane fade" id="pills-vless" role="tabpanel">
+            <div class="row">
+                {% for server in servers %}
+                <div class="col-lg-4 col-md-6 mb-4">
+                    {% with protocol_override='vless' %}
+                        {% include 'includes/server_card.html' %}
+                    {% endwith %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="tab-pane fade" id="pills-trojan" role="tabpanel">
+            <div class="row">
+                {% for server in servers %}
+                <div class="col-lg-4 col-md-6 mb-4">
+                    {% with protocol_override='trojan' %}
+                        {% include 'includes/server_card.html' %}
+                    {% endwith %}
+                </div>
+                {% endfor %}
+            </div>
         </div>
     </div>
 </div>

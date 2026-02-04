@@ -1,0 +1,116 @@
+<div class="card glass-card h-100 border-0 shadow-lg" style="background: rgba(30, 30, 50, 0.6); backdrop-filter: blur(10px);">
+    <div class="card-header border-bottom border-secondary bg-transparent d-flex justify-content-between align-items-center">
+        <div>
+            <span class="badge bg-primary me-2"><i class="fas fa-globe"></i> {{ server.country }}</span>
+            <span class="fw-bold">{{ server.name }}</span>
+        </div>
+        <span class="badge {% if server.status == 'online' %}bg-success{% else %}bg-danger{% endif %} rounded-pill">
+            {{ server.status|upper }}
+        </span>
+    </div>
+    <div class="card-body">
+        <div class="mb-3">
+            <small class="text-muted d-block">Domain/Host</small>
+            <div class="d-flex align-items-center">
+                <i class="fas fa-server text-info me-2"></i>
+                <span class="text-white">{{ server.domain or server.ip_address }}</span>
+            </div>
+        </div>
+        <div class="mb-3">
+            <small class="text-muted d-block">ISP</small>
+            <div class="d-flex align-items-center">
+                <i class="fas fa-network-wired text-warning me-2"></i>
+                <span class="text-white">{{ server.isp }}</span>
+            </div>
+        </div>
+        <div class="mb-3">
+            <small class="text-muted d-block">Features</small>
+            <div>
+                <span class="badge bg-secondary">WS</span>
+                <span class="badge bg-secondary">TLS</span>
+                <span class="badge bg-secondary">UDP</span>
+            </div>
+        </div>
+
+        <!-- Stats Bar -->
+        {% if server.stats %}
+            {% set s = server.stats | from_json %}
+            <div class="mb-1 d-flex justify-content-between text-muted small">
+                <span>Load</span>
+                <span>{{ s.cpu }}% CPU / {{ s.ram }}% RAM</span>
+            </div>
+            <div class="progress" style="height: 5px;">
+                <div class="progress-bar bg-success" role="progressbar" style="width: {{ s.cpu }}%"></div>
+            </div>
+        {% endif %}
+    </div>
+    <div class="card-footer border-0 bg-transparent">
+        <button class="btn btn-outline-light w-100 fw-bold" data-bs-toggle="modal" data-bs-target="#buyModal{{ server.id }}_{{ protocol_override|default('any') }}">
+            <i class="fas fa-shopping-cart me-2"></i> CREATE ACCOUNT
+        </button>
+    </div>
+</div>
+
+<!-- Modal -->
+<div class="modal fade" id="buyModal{{ server.id }}_{{ protocol_override|default('any') }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content glass-card border-secondary text-white">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title">Create Account - {{ server.name }}</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form action="{{ url_for('buy') }}" method="POST">
+                <div class="modal-body">
+                    <input type="hidden" name="server_id" value="{{ server.id }}">
+
+                    <div class="mb-3">
+                        <label class="form-label">Protocol</label>
+                        <select name="protocol" class="form-select bg-dark text-white border-secondary">
+                            {% if protocol_override %}
+                                <option value="{{ protocol_override }}" selected>{{ protocol_override|upper }}</option>
+                            {% else %}
+                                <option value="udp">UDP ZIVPN</option>
+                                <option value="vmess">VMESS</option>
+                                <option value="vless">VLESS</option>
+                                <option value="trojan">TROJAN</option>
+                            {% endif %}
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Username</label>
+                        <input type="text" name="username" class="form-control bg-dark text-white border-secondary" placeholder="Enter username" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Password</label>
+                        <input type="text" name="password" class="form-control bg-dark text-white border-secondary" placeholder="Optional for Vmess/Vless/Trojan">
+                        <small class="text-muted">Required for UDP. Auto-generated for Xray if empty.</small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Duration</label>
+                        <select name="duration" class="form-select bg-dark text-white border-secondary">
+                            <option value="30">30 Days (Rp {{ settings.price_per_month }})</option>
+                            <option value="60">60 Days (Rp {{ settings.price_per_month * 2 }})</option>
+                            <option value="90">90 Days (Rp {{ settings.price_per_month * 3 }})</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Payment Method</label>
+                        <select name="channel_code" class="form-select bg-dark text-white border-secondary">
+                            {% for channel in channels %}
+                                <option value="{{ channel.code }}">{{ channel.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="submit" class="btn btn-primary">Process Payment</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
