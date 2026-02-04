@@ -64,12 +64,54 @@
                             </tbody>
                         </table>
                     </div>
-                    <div class="alert alert-info mt-3">
-                        <i class="fas fa-info"></i> Masukkan detail ini ke aplikasi VPN ZIVPN UDP Anda.
+
+                    {% if config_uri %}
+                    <div class="mt-4">
+                        <h5><i class="fas fa-qrcode text-warning"></i> Config / QR Code</h5>
+                        <div class="text-center bg-white p-3 rounded mb-3 d-inline-block">
+                             <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data={{ config_uri }}" alt="QR Config" class="img-fluid">
+                        </div>
+                        <div class="bg-black p-3 rounded position-relative">
+                            <code id="configUri" class="d-block text-break user-select-all">{{ config_uri }}</code>
+                            <button class="btn btn-sm btn-light position-absolute top-0 end-0 m-2" onclick="copyConfig('configUri')">Copy</button>
+                        </div>
                     </div>
+                    {% elif account.protocol == 'udp' %}
+                    <div class="alert alert-info mt-3">
+                        <i class="fas fa-info"></i> Untuk UDP, silakan masukkan Username dan Password di atas ke aplikasi ZIVPN.
+                    </div>
+                    {% endif %}
                 </div>
             </div>
             {% endif %}
+
+<script>
+function copyConfig(elementId) {
+    var copyText = document.getElementById(elementId).innerText;
+
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(copyText).then(function() {
+            alert("Config copied!");
+        });
+    } else {
+        // Fallback for HTTP/Mobile
+        var textArea = document.createElement("textarea");
+        textArea.value = copyText;
+        textArea.style.position = "fixed";
+        textArea.style.left = "0";
+        textArea.style.top = "0";
+        textArea.style.opacity = "0";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        try {
+            document.execCommand('copy');
+            alert("Config copied!");
+        } catch (err) {}
+        document.body.removeChild(textArea);
+    }
+}
+</script>
 
         </div>
     </div>

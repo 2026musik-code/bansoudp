@@ -11,6 +11,7 @@ import subprocess
 import requests
 import json
 import uuid
+import base64
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 app = Flask(__name__)
@@ -148,6 +149,37 @@ def get_paymenku_channels(api_key):
     except:
         pass
     return []
+
+def generate_config_uri(account):
+    host = account.server.domain or account.server.ip_address
+    name = f"{account.username}-{account.server.name}"
+
+    if account.protocol == 'vmess':
+        # Vmess JSON format
+        conf = {
+            "v": "2",
+            "ps": name,
+            "add": host,
+            "port": 10001,
+            "id": account.uuid,
+            "aid": "0",
+            "net": "ws",
+            "type": "none",
+            "host": host,
+            "path": "/vmess",
+            "tls": "none"
+        }
+        return "vmess://" + base64.b64encode(json.dumps(conf).encode('utf-8')).decode('utf-8')
+
+    elif account.protocol == 'vless':
+        # vless://uuid@host:port?security=none&encryption=none&type=ws&host=host&path=/vless#name
+        return f"vless://{account.uuid}@{host}:10002?security=none&encryption=none&type=ws&host={host}&path=/vless#{name}"
+
+    elif account.protocol == 'trojan':
+        # trojan://password@host:port?security=none&type=ws&host=host&path=/trojan#name
+        return f"trojan://{account.uuid}@{host}:10003?security=none&type=ws&host={host}&path=/trojan#{name}"
+
+    return None
 
 # --- User Routes ---
 @app.route('/')
@@ -321,13 +353,15 @@ def payment_callback():
 @app.route('/success/<int:account_id>')
 def success(account_id):
     account = Account.query.get_or_404(account_id)
+    config_uri = generate_config_uri(account)
     if account.status != 'active':
         flash('Pembayaran sedang diproses. Tunggu sebentar atau refresh.', 'info')
-    return render_template('success.html', pin=account.pin, account=account)
+    return render_template('success.html', pin=account.pin, account=account, config_uri=config_uri)
 
 @app.route('/list', methods=['GET', 'POST'])
 def list_accounts():
     account = None
+    config_uri = None
     if request.method == 'POST':
         pin = request.form.get('pin')
         if pin:
@@ -337,8 +371,10 @@ def list_accounts():
             elif account.status != 'active':
                 flash('Akun belum aktif atau sudah kadaluarsa.', 'warning')
                 account = None
+            else:
+                config_uri = generate_config_uri(account)
 
-    return render_template('list.html', account=account)
+    return render_template('list.html', account=account, config_uri=config_uri)
 
 # --- Admin Routes ---
 @app.route('/admin/login', methods=['GET', 'POST'])
