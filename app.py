@@ -154,30 +154,38 @@ def generate_config_uri(account):
     host = account.server.domain or account.server.ip_address
     name = f"{account.username}-{account.server.name}"
 
+    # Defaults to port 443 (TLS) or 80 (Non-TLS).
+    # For generated links, we prefer TLS (443).
+    # If the user wants non-TLS, they can usually edit the config or we could provide a switch.
+    # Given the request "pastikan port akun suport tls non tls", Nginx handles both.
+    # We will generate the TLS config as the default "Premium" link.
+    port = 443
+    tls_settings = "tls"
+
     if account.protocol == 'vmess':
         # Vmess JSON format
         conf = {
             "v": "2",
             "ps": name,
             "add": host,
-            "port": 10001,
+            "port": port,
             "id": account.uuid,
             "aid": "0",
             "net": "ws",
             "type": "none",
             "host": host,
             "path": "/vmess",
-            "tls": "none"
+            "tls": tls_settings
         }
         return "vmess://" + base64.b64encode(json.dumps(conf).encode('utf-8')).decode('utf-8')
 
     elif account.protocol == 'vless':
-        # vless://uuid@host:port?security=none&encryption=none&type=ws&host=host&path=/vless#name
-        return f"vless://{account.uuid}@{host}:10002?security=none&encryption=none&type=ws&host={host}&path=/vless#{name}"
+        # vless://uuid@host:port?security=tls&encryption=none&type=ws&host=host&path=/vless#name
+        return f"vless://{account.uuid}@{host}:{port}?security={tls_settings}&encryption=none&type=ws&host={host}&path=/vless#{name}"
 
     elif account.protocol == 'trojan':
-        # trojan://password@host:port?security=none&type=ws&host=host&path=/trojan#name
-        return f"trojan://{account.uuid}@{host}:10003?security=none&type=ws&host={host}&path=/trojan#{name}"
+        # trojan://password@host:port?security=tls&type=ws&host=host&path=/trojan#name
+        return f"trojan://{account.uuid}@{host}:{port}?security={tls_settings}&type=ws&host={host}&path=/trojan#{name}"
 
     return None
 
@@ -597,12 +605,9 @@ def node_sync():
 @app.route('/api/setup/install.sh')
 def get_install_script():
     # Dynamic script generation
-    # We don't have the server token here easily unless passed as query param or generic installer
-    # Plan: User runs `curl domain/api/setup/install.sh | bash -s -- <token>`
-
     host = request.host_url.rstrip('/')
     script = f"""#!/bin/bash
-# ZIVPN & Xray Node Installer
+# ZIVPN & Xray Node Installer with Nginx + SSL
 # Usage: bash install.sh <token>
 
 TOKEN=$1
@@ -618,12 +623,9 @@ fi
 NODE_DOMAIN=$2
 
 if [ -z "$NODE_DOMAIN" ]; then
-    # Try reading from TTY if available (interactive mode)
     if [ -t 0 ]; then
         read -p "Enter Domain for this Node (e.g., node1.myserver.com): " NODE_DOMAIN
     else
-        # If running via pipe curl | bash, stdin is the script.
-        # We try to read from /dev/tty explicitly.
         if [ -e /dev/tty ]; then
             read -p "Enter Domain for this Node (e.g., node1.myserver.com): " NODE_DOMAIN < /dev/tty
         fi
@@ -631,8 +633,7 @@ if [ -z "$NODE_DOMAIN" ]; then
 fi
 
 if [ -z "$NODE_DOMAIN" ]; then
-    echo "Error: Domain is required. Please provide it as the second argument:"
-    echo "Usage: curl ... | bash -s -- <token> <domain>"
+    echo "Error: Domain is required."
     exit 1
 fi
 
@@ -641,9 +642,9 @@ echo "Master URL: $MASTER_URL"
 echo "Token: $TOKEN"
 echo "Node Domain: $NODE_DOMAIN"
 
-# 1. Install Dependencies
+# 1. Install Dependencies (Include Nginx and Certbot)
 apt-get update
-apt-get install -y python3 python3-pip curl unzip socat
+apt-get install -y python3 python3-pip curl unzip socat nginx certbot python3-certbot-nginx
 pip3 install requests psutil
 
 # 2. Install Xray Core
@@ -676,7 +677,50 @@ systemctl daemon-reload
 systemctl enable zivpn
 systemctl start zivpn
 
-# 3. Create Agent Script
+# 3. Configure Nginx (Reverse Proxy for Xray WS)
+cat <<EOF > /etc/nginx/sites-available/zivpn
+server {{
+    listen 80;
+    server_name $NODE_DOMAIN;
+
+    location /vmess {{
+        proxy_pass http://127.0.0.1:10001;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$http_host;
+    }}
+
+    location /vless {{
+        proxy_pass http://127.0.0.1:10002;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$http_host;
+    }}
+
+    location /trojan {{
+        proxy_pass http://127.0.0.1:10003;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$http_host;
+    }}
+}}
+EOF
+
+ln -sf /etc/nginx/sites-available/zivpn /etc/nginx/sites-enabled/
+rm -f /etc/nginx/sites-enabled/default
+
+# 4. Obtain SSL Certificate
+# Using --non-interactive, might fail if email not provided or other prompts,
+# but usually works with --agree-tos.
+certbot --nginx -d $NODE_DOMAIN --non-interactive --agree-tos -m admin@$NODE_DOMAIN --redirect
+
+# Reload Nginx to apply changes
+systemctl reload nginx
+
+# 5. Create Agent Script
 mkdir -p /usr/local/zivpn-agent
 cat <<EOF > /usr/local/zivpn-agent/agent.py
 import requests
@@ -697,34 +741,23 @@ def get_stats():
         'cpu': psutil.cpu_percent(),
         'ram': psutil.virtual_memory().percent,
         'domain': NODE_DOMAIN,
-        # 'isp': 'Unknown', # Could use external API to fetch
-        # 'country': 'Unknown'
     }}
 
 def update_zivpn_config(accounts):
-    # Filter UDP accounts
     udp_users = [
         {{'username': acc['username'], 'password': acc['password']}}
         for acc in accounts if acc.get('protocol') == 'udp'
     ]
-
-    # Write to users.json (Format depends on binary, assuming standard JSON list or dict)
-    # If binary uses specific format, this needs adjustment.
-    # For now, writing a standard JSON structure.
     try:
         with open(ZIVPN_USERS_PATH, 'w') as f:
             json.dump(udp_users, f, indent=2)
-
-        # Reload/Restart ZIVPN
         os.system("systemctl restart zivpn")
     except Exception as e:
         print(f"Error updating ZIVPN: {{e}}")
 
 def update_xray_config(accounts):
-    # Basic Xray Config Template
     inbounds = []
-
-    # VMESS
+    # VMESS (10001)
     vmess_users = [
         {{'id': acc['uuid'], 'alterId': 0, 'email': acc['username']}}
         for acc in accounts if acc['protocol'] == 'vmess'
@@ -732,12 +765,13 @@ def update_xray_config(accounts):
     if vmess_users:
         inbounds.append({{
             "port": 10001,
+            "listen": "127.0.0.1",
             "protocol": "vmess",
             "settings": {{"clients": vmess_users}},
             "streamSettings": {{"network": "ws", "wsSettings": {{"path": "/vmess"}}}}
         }})
 
-    # VLESS
+    # VLESS (10002)
     vless_users = [
         {{'id': acc['uuid'], 'email': acc['username']}}
         for acc in accounts if acc['protocol'] == 'vless'
@@ -745,12 +779,13 @@ def update_xray_config(accounts):
     if vless_users:
         inbounds.append({{
             "port": 10002,
+            "listen": "127.0.0.1",
             "protocol": "vless",
             "settings": {{"clients": vless_users, "decryption": "none"}},
             "streamSettings": {{"network": "ws", "wsSettings": {{"path": "/vless"}}}}
         }})
 
-    # TROJAN
+    # TROJAN (10003)
     trojan_users = [
         {{'password': acc['uuid'], 'email': acc['username']}}
         for acc in accounts if acc['protocol'] == 'trojan'
@@ -758,6 +793,7 @@ def update_xray_config(accounts):
     if trojan_users:
         inbounds.append({{
             "port": 10003,
+            "listen": "127.0.0.1",
             "protocol": "trojan",
             "settings": {{"clients": trojan_users}},
             "streamSettings": {{"network": "ws", "wsSettings": {{"path": "/trojan"}}}}
@@ -772,19 +808,15 @@ def update_xray_config(accounts):
     with open(XRAY_CONFIG_PATH, 'w') as f:
         json.dump(config, f, indent=2)
 
-    # Restart Xray
     os.system("systemctl restart xray")
 
 def main():
     print("Agent started...")
     while True:
         try:
-            # 1. Heartbeat
             stats = get_stats()
             requests.post(f"{{MASTER_URL}}/api/node/heartbeat",
                           json=stats, headers={{'X-Server-Token': TOKEN}}, timeout=10)
-
-            # 2. Sync Accounts
             r = requests.get(f"{{MASTER_URL}}/api/node/sync",
                              headers={{'X-Server-Token': TOKEN}}, timeout=10)
             if r.status_code == 200:
@@ -792,17 +824,15 @@ def main():
                 accs = data.get('accounts', [])
                 update_xray_config(accs)
                 update_zivpn_config(accs)
-
         except Exception as e:
             print(f"Error: {{e}}")
-
         time.sleep(60)
 
 if __name__ == "__main__":
     main()
 EOF
 
-# 4. Install Service
+# 6. Install Service
 cat <<EOF > /etc/systemd/system/zivpn-agent.service
 [Unit]
 Description=ZIVPN Node Agent

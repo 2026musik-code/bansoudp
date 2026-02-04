@@ -1,0 +1,254 @@
+--- INSTALL SCRIPT ---
+#!/bin/bash
+# ZIVPN & Xray Node Installer with Nginx + SSL
+# Usage: bash install.sh <token>
+
+TOKEN=$1
+MASTER_URL="http://panel.example.com"
+
+if [ -z "$TOKEN" ]; then
+    echo "Error: Token required."
+    echo "Usage: bash install.sh <token>"
+    exit 1
+fi
+
+# Ask for Domain (Argument 2 or Interactive)
+NODE_DOMAIN=$2
+
+if [ -z "$NODE_DOMAIN" ]; then
+    if [ -t 0 ]; then
+        read -p "Enter Domain for this Node (e.g., node1.myserver.com): " NODE_DOMAIN
+    else
+        if [ -e /dev/tty ]; then
+            read -p "Enter Domain for this Node (e.g., node1.myserver.com): " NODE_DOMAIN < /dev/tty
+        fi
+    fi
+fi
+
+if [ -z "$NODE_DOMAIN" ]; then
+    echo "Error: Domain is required."
+    exit 1
+fi
+
+echo "--- BANSOS ZIVPN Node Installer ---"
+echo "Master URL: $MASTER_URL"
+echo "Token: $TOKEN"
+echo "Node Domain: $NODE_DOMAIN"
+
+# 1. Install Dependencies (Include Nginx and Certbot)
+apt-get update
+apt-get install -y python3 python3-pip curl unzip socat nginx certbot python3-certbot-nginx
+pip3 install requests psutil
+
+# 2. Install Xray Core
+echo "Installing Xray..."
+bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
+
+# 2b. Install ZIVPN (UDP)
+echo "Installing ZIVPN..."
+mkdir -p /usr/local/etc/zivpn
+cd /usr/local/bin
+wget -O zivpn https://github.com/zahidbd2/udp-zivpn/raw/main/zivpn
+chmod +x zivpn
+
+# Create ZIVPN Service (UDP Port 7200 default)
+cat <<EOF > /etc/systemd/system/zivpn.service
+[Unit]
+Description=ZIVPN UDP Service
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/zivpn --port 7200 --users /usr/local/etc/zivpn/users.json
+Restart=always
+User=root
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable zivpn
+systemctl start zivpn
+
+# 3. Configure Nginx (Reverse Proxy for Xray WS)
+cat <<EOF > /etc/nginx/sites-available/zivpn
+server {
+    listen 80;
+    server_name $NODE_DOMAIN;
+
+    location /vmess {
+        proxy_pass http://127.0.0.1:10001;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$http_host;
+    }
+
+    location /vless {
+        proxy_pass http://127.0.0.1:10002;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$http_host;
+    }
+
+    location /trojan {
+        proxy_pass http://127.0.0.1:10003;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$http_host;
+    }
+}
+EOF
+
+ln -sf /etc/nginx/sites-available/zivpn /etc/nginx/sites-enabled/
+rm -f /etc/nginx/sites-enabled/default
+
+# 4. Obtain SSL Certificate
+# Using --non-interactive, might fail if email not provided or other prompts,
+# but usually works with --agree-tos.
+certbot --nginx -d $NODE_DOMAIN --non-interactive --agree-tos -m admin@$NODE_DOMAIN --redirect
+
+# Reload Nginx to apply changes
+systemctl reload nginx
+
+# 5. Create Agent Script
+mkdir -p /usr/local/zivpn-agent
+cat <<EOF > /usr/local/zivpn-agent/agent.py
+import requests
+import time
+import psutil
+import subprocess
+import json
+import os
+
+MASTER_URL = "$MASTER_URL"
+TOKEN = "$TOKEN"
+NODE_DOMAIN = "$NODE_DOMAIN"
+XRAY_CONFIG_PATH = "/usr/local/etc/xray/config.json"
+ZIVPN_USERS_PATH = "/usr/local/etc/zivpn/users.json"
+
+def get_stats():
+    return {
+        'cpu': psutil.cpu_percent(),
+        'ram': psutil.virtual_memory().percent,
+        'domain': NODE_DOMAIN,
+    }
+
+def update_zivpn_config(accounts):
+    udp_users = [
+        {'username': acc['username'], 'password': acc['password']}
+        for acc in accounts if acc.get('protocol') == 'udp'
+    ]
+    try:
+        with open(ZIVPN_USERS_PATH, 'w') as f:
+            json.dump(udp_users, f, indent=2)
+        os.system("systemctl restart zivpn")
+    except Exception as e:
+        print(f"Error updating ZIVPN: {e}")
+
+def update_xray_config(accounts):
+    inbounds = []
+    # VMESS (10001)
+    vmess_users = [
+        {'id': acc['uuid'], 'alterId': 0, 'email': acc['username']}
+        for acc in accounts if acc['protocol'] == 'vmess'
+    ]
+    if vmess_users:
+        inbounds.append({
+            "port": 10001,
+            "listen": "127.0.0.1",
+            "protocol": "vmess",
+            "settings": {"clients": vmess_users},
+            "streamSettings": {"network": "ws", "wsSettings": {"path": "/vmess"}}
+        })
+
+    # VLESS (10002)
+    vless_users = [
+        {'id': acc['uuid'], 'email': acc['username']}
+        for acc in accounts if acc['protocol'] == 'vless'
+    ]
+    if vless_users:
+        inbounds.append({
+            "port": 10002,
+            "listen": "127.0.0.1",
+            "protocol": "vless",
+            "settings": {"clients": vless_users, "decryption": "none"},
+            "streamSettings": {"network": "ws", "wsSettings": {"path": "/vless"}}
+        })
+
+    # TROJAN (10003)
+    trojan_users = [
+        {'password': acc['uuid'], 'email': acc['username']}
+        for acc in accounts if acc['protocol'] == 'trojan'
+    ]
+    if trojan_users:
+        inbounds.append({
+            "port": 10003,
+            "listen": "127.0.0.1",
+            "protocol": "trojan",
+            "settings": {"clients": trojan_users},
+            "streamSettings": {"network": "ws", "wsSettings": {"path": "/trojan"}}
+        })
+
+    config = {
+        "log": {"loglevel": "warning"},
+        "inbounds": inbounds,
+        "outbounds": [{"protocol": "freedom"}]
+    }
+
+    with open(XRAY_CONFIG_PATH, 'w') as f:
+        json.dump(config, f, indent=2)
+
+    os.system("systemctl restart xray")
+
+def main():
+    print("Agent started...")
+    while True:
+        try:
+            stats = get_stats()
+            requests.post(f"{MASTER_URL}/api/node/heartbeat",
+                          json=stats, headers={'X-Server-Token': TOKEN}, timeout=10)
+            r = requests.get(f"{MASTER_URL}/api/node/sync",
+                             headers={'X-Server-Token': TOKEN}, timeout=10)
+            if r.status_code == 200:
+                data = r.json()
+                accs = data.get('accounts', [])
+                update_xray_config(accs)
+                update_zivpn_config(accs)
+        except Exception as e:
+            print(f"Error: {e}")
+        time.sleep(60)
+
+if __name__ == "__main__":
+    main()
+EOF
+
+# 6. Install Service
+cat <<EOF > /etc/systemd/system/zivpn-agent.service
+[Unit]
+Description=ZIVPN Node Agent
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 /usr/local/zivpn-agent/agent.py
+Restart=always
+User=root
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable zivpn-agent
+systemctl start zivpn-agent
+
+echo "Installation Complete! Agent is running."
+
+
+--- VMESS URI ---
+vmess://eyJ2IjogIjIiLCAicHMiOiAidXNlcjEtVGVzdE5vZGUiLCAiYWRkIjogIm5vZGUxLmV4YW1wbGUuY29tIiwgInBvcnQiOiA0NDMsICJpZCI6ICIxMjM0LTU2NzgiLCAiYWlkIjogIjAiLCAibmV0IjogIndzIiwgInR5cGUiOiAibm9uZSIsICJob3N0IjogIm5vZGUxLmV4YW1wbGUuY29tIiwgInBhdGgiOiAiL3ZtZXNzIiwgInRscyI6ICJ0bHMifQ==
+
+--- VLESS URI ---
+vless://1234-5678@node1.example.com:443?security=tls&encryption=none&type=ws&host=node1.example.com&path=/vless#user1-TestNode
