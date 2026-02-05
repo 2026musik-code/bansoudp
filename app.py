@@ -415,6 +415,62 @@ def admin_dashboard():
     servers = Server.query.all()
     return render_template('admin_dashboard.html', accounts=accounts, settings=settings, servers=servers)
 
+@app.route('/admin/create_account', methods=['POST'])
+def admin_create_account():
+    if not session.get('admin_logged_in'):
+        return redirect(url_for('admin_login'))
+
+    username = request.form.get('username')
+    password = request.form.get('password')
+    protocol = request.form.get('protocol')
+    server_id = request.form.get('server_id')
+    duration = int(request.form.get('duration', 30))
+
+    if Account.query.filter_by(username=username).first():
+        flash('Username sudah digunakan.', 'danger')
+        return redirect(url_for('admin_dashboard'))
+
+    server = Server.query.get(server_id)
+    if not server:
+        flash('Server tidak valid.', 'danger')
+        return redirect(url_for('admin_dashboard'))
+
+    # Logic similar to buy() but no payment
+    pin = str(random.randint(100000, 999999))
+    while Account.query.filter_by(pin=pin).first():
+        pin = str(random.randint(100000, 999999))
+
+    reference_id = f"ADM-{int(datetime.datetime.utcnow().timestamp())}-{random.randint(100,999)}"
+    expiry = datetime.datetime.utcnow() + datetime.timedelta(days=duration)
+
+    new_uuid = None
+    if protocol in ['vmess', 'vless', 'trojan']:
+        new_uuid = str(uuid.uuid4())
+        if not password:
+            password = "generated-uuid"
+    else:
+        # UDP
+        if not password:
+             flash('Password wajib diisi untuk UDP.', 'danger')
+             return redirect(url_for('admin_dashboard'))
+
+    new_account = Account(
+        username=username,
+        password=password,
+        pin=pin,
+        expiry_date=expiry,
+        status='active', # Directly active
+        reference_id=reference_id,
+        protocol=protocol,
+        server_id=server.id,
+        uuid=new_uuid
+    )
+
+    db.session.add(new_account)
+    db.session.commit()
+    flash(f'Akun {username} berhasil dibuat (Status: Active).', 'success')
+    return redirect(url_for('admin_dashboard'))
+
 @app.route('/admin/action/<action>/<int:id>', methods=['POST'])
 def admin_action(action, id):
     if not session.get('admin_logged_in'):
