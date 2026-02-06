@@ -17,6 +17,11 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 app.config['SECRET_KEY'] = 'bansos-zivpn-secret-key-change-me'
+
+# Register global function for templates
+@app.context_processor
+def utility_processor():
+    return dict(generate_config_uri=generate_config_uri)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -186,6 +191,13 @@ def generate_config_uri(account):
     elif account.protocol == 'trojan':
         # trojan://password@host:port?security=tls&type=ws&host=host&path=/trojan#name
         return f"trojan://{account.uuid}@{host}:{port}?security={tls_settings}&type=ws&host={host}&path=/trojan#{name}"
+
+    elif account.protocol == 'udp':
+        # UDP ZIVPN Custom Format
+        # Assuming the client needs these details. We'll provide a clear string or a JSON structure.
+        # Since standard URI schemes for proprietary VPNs vary, we'll use a descriptive format.
+        udp_port = 7200
+        return f"udp://{account.username}:{account.password}@{host}:{udp_port}?name={name}"
 
     return None
 
@@ -742,25 +754,25 @@ server {{
     location /vmess {{
         proxy_pass http://127.0.0.1:10001;
         proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Upgrade \\$http_upgrade;
         proxy_set_header Connection "upgrade";
-        proxy_set_header Host \$http_host;
+        proxy_set_header Host \\$http_host;
     }}
 
     location /vless {{
         proxy_pass http://127.0.0.1:10002;
         proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Upgrade \\$http_upgrade;
         proxy_set_header Connection "upgrade";
-        proxy_set_header Host \$http_host;
+        proxy_set_header Host \\$http_host;
     }}
 
     location /trojan {{
         proxy_pass http://127.0.0.1:10003;
         proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Upgrade \\$http_upgrade;
         proxy_set_header Connection "upgrade";
-        proxy_set_header Host \$http_host;
+        proxy_set_header Host \\$http_host;
     }}
 }}
 EOF
@@ -789,6 +801,7 @@ import os
 MASTER_URL = "$MASTER_URL"
 TOKEN = "$TOKEN"
 NODE_DOMAIN = "$NODE_DOMAIN"
+# Required constants for update functions
 XRAY_CONFIG_PATH = "/usr/local/etc/xray/config.json"
 ZIVPN_USERS_PATH = "/usr/local/etc/zivpn/users.json"
 

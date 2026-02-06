@@ -54,6 +54,14 @@
                                     </td>
                                     <td>
                                         <div class="btn-group btn-group-sm">
+                                            <!-- View -->
+                                            <button type="button" class="btn btn-info" title="Lihat Akun"
+                                                    data-bs-toggle="modal" data-bs-target="#viewAccountModal"
+                                                    data-username="{{ account.username }}"
+                                                    data-protocol="{{ account.protocol|upper }}"
+                                                    data-config="{{ generate_config_uri(account) }}">
+                                                <i class="fas fa-eye"></i>
+                                            </button>
                                             <!-- Extend -->
                                             <form action="{{ url_for('admin_action', action='extend', id=account.id) }}" method="POST" style="display:inline;">
                                                 <button type="submit" class="btn btn-primary" title="Perpanjang 30 Hari"><i class="fas fa-calendar-plus"></i></button>
@@ -178,4 +186,61 @@
         </div>
     </div>
 </div>
+
+<!-- View Account Modal -->
+<div class="modal fade" id="viewAccountModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content glass-card border-secondary text-white" style="background: #1e1e32; box-shadow: 0 0 20px rgba(0,0,0,0.5);">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title" id="viewAccountTitle">Detail Akun</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Connection String</label>
+                    <textarea id="viewAccountConfig" class="form-control bg-dark text-white border-secondary" rows="5" readonly></textarea>
+                </div>
+                <button type="button" class="btn btn-outline-light w-100" onclick="copyViewConfig()">
+                    <i class="fas fa-copy me-2"></i> Salin Akun
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    var viewAccountModal = document.getElementById('viewAccountModal');
+    viewAccountModal.addEventListener('show.bs.modal', function (event) {
+        var button = event.relatedTarget;
+        var username = button.getAttribute('data-username');
+        var protocol = button.getAttribute('data-protocol');
+        var config = button.getAttribute('data-config');
+
+        var modalTitle = viewAccountModal.querySelector('#viewAccountTitle');
+        var textarea = viewAccountModal.querySelector('#viewAccountConfig');
+
+        modalTitle.textContent = 'Detail Akun: ' + username + ' (' + protocol + ')';
+        textarea.value = config;
+    });
+
+    function copyViewConfig() {
+        var copyText = document.getElementById("viewAccountConfig");
+        copyText.select();
+        copyText.setSelectionRange(0, 99999); // For mobile devices
+
+        // Use the secure clipboard API if available, fallback to execCommand
+        if (navigator.clipboard) {
+            navigator.clipboard.writeText(copyText.value).then(function() {
+                alert("Config copied to clipboard!");
+            }).catch(function(err) {
+                 // Fallback
+                 document.execCommand("copy");
+                 alert("Config copied!");
+            });
+        } else {
+             document.execCommand("copy");
+             alert("Config copied!");
+        }
+    }
+</script>
 {% endblock %}
